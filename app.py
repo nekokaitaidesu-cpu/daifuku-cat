@@ -1,66 +1,204 @@
 import streamlit as st
-import base64
-
-def get_base64_of_bin_file(bin_file):
-    with open(bin_file, 'rb') as f:
-        data = f.read()
-    return base64.b64encode(data).decode()
 
 # ページ設定
-st.set_page_config(page_title="ぬるぬる大福キャット", layout="centered")
+st.set_page_config(page_title="Daifuku Cat Animation", page_icon="🍄")
 
-st.title("大福キャットがぬるぬる動くよ！🍄")
+st.title("もちもちだいふく猫だっち 🍄")
+st.write("HTMLとCSSだけで描画して動かしているっち！")
 
-# 画像ファイルのパス（※ここに保存した画像ファイル名を指定してね）
-image_filename = 'daifuku_cat.jpg'
+# HTML/CSSコード
+html_code = """
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<style>
+  /* 全体のコンテナ */
+  .container {
+    display: flex;
+    justify_content: center;
+    align-items: center;
+    height: 400px;
+    background-color: #f0f2f6; /* 背景色 */
+    overflow: hidden;
+  }
 
-try:
-    # 画像をBase64に変換してHTMLに埋め込む（これでGitHub/Streamlit上でも確実に表示されるよ）
-    img_base64 = get_base64_of_bin_file(image_filename)
+  /* 猫の全体ラッパー */
+  .cat-wrapper {
+    position: relative;
+    width: 320px;
+    height: 200px;
+  }
+
+  /* 体（だいふく部分） */
+  .body {
+    position: absolute;
+    width: 300px;
+    height: 190px;
+    background-color: #fff;
+    border: 4px solid #333;
+    border-radius: 50% 50% 45% 45% / 60% 60% 40% 40%;
+    z-index: 10;
+    top: 0;
+    left: 0;
+  }
+
+  /* 耳 */
+  .ear {
+    position: absolute;
+    width: 50px;
+    height: 50px;
+    background-color: #fff;
+    border: 4px solid #333;
+    border-radius: 10px 40px 0 0;
+    z-index: 5;
+  }
+  .ear.left {
+    top: -15px;
+    left: 40px;
+    transform: rotate(-20deg);
+  }
+  .ear.right {
+    top: -15px;
+    left: 110px;
+    transform: rotate(10deg);
+  }
+  /* 耳の内側の線を隠すためのカバー */
+  .ear-cover {
+    position: absolute;
+    width: 40px;
+    height: 10px;
+    background-color: #fff;
+    z-index: 11;
+    top: 25px;
+    left: 5px;
+  }
+
+  /* 顔のパーツ */
+  .face {
+    position: absolute;
+    z-index: 20;
+    top: 80px;
+    left: 40px;
+  }
+
+  /* 目 (ニコニコ) */
+  .eye {
+    position: absolute;
+    width: 20px;
+    height: 10px;
+    border-top: 4px solid #333;
+    border-radius: 50%;
+    top: 0;
+  }
+  .eye.left { left: 0; }
+  .eye.right { left: 80px; }
+
+  /* ほっぺ */
+  .cheek {
+    position: absolute;
+    width: 20px;
+    height: 10px;
+    background-color: #ffcccc;
+    border-radius: 50%;
+    opacity: 0.6;
+    top: 20px;
+  }
+  .cheek.left { left: -15px; }
+  .cheek.right { left: 95px; }
+
+  /* 口 (wの形) */
+  .mouth {
+    position: absolute;
+    width: 20px;
+    height: 10px;
+    border-bottom: 4px solid #333;
+    border-right: 4px solid #333;
+    border-radius: 0 0 10px 0;
+    transform: rotate(45deg);
+    top: 15px;
+    left: 40px;
+  }
+  .mouth::after {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 10px;
+    border-bottom: 4px solid #333;
+    border-left: 4px solid #333;
+    border-radius: 0 0 0 10px;
+    transform: rotate(90deg) translate(-14px, -14px); 
+    top: 0;
+    left: 0;
+  }
+  
+  /* しっぽ */
+  .tail {
+    position: absolute;
+    width: 100px;
+    height: 60px;
+    background-color: #fff;
+    border: 4px solid #333;
+    border-radius: 50%;
+    top: 60px;
+    right: -40px;
+    z-index: 1;
+    transform-origin: 0% 50%; /* 左側を中心に回転 */
+    animation: wag 1s infinite alternate ease-in-out; /* アニメーション設定 */
+  }
+
+  /* ハート */
+  .heart {
+    position: absolute;
+    color: #333;
+    font-size: 24px;
+    top: 30px;
+    right: -40px;
+    z-index: 20;
+    animation: float 2s infinite ease-in-out;
+    font-weight: bold;
+  }
+
+  /* アニメーション定義 */
+  @keyframes wag {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(25deg); }
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="cat-wrapper">
+    <div class="ear left"><div class="ear-cover"></div></div>
+    <div class="ear right"><div class="ear-cover"></div></div>
     
-    # CSSとHTMLの定義
-    html_code = f"""
-    <style>
-        @keyframes nurunuru {{
-            0% {{
-                transform: scale(1, 1) translateY(0);
-            }}
-            50% {{
-                /* 横に伸びて、縦に縮む（つぶれる感じ） */
-                transform: scale(1.1, 0.9) translateY(10px);
-            }}
-            100% {{
-                transform: scale(1, 1) translateY(0);
-            }}
-        }}
-
-        .daifuku-container {{
-            display: flex;
-            justify_content: center;
-            align_items: center;
-            height: 400px;
-            /* 背景をちょっと和風な色にしてみたっち */
-            background-color: #f0f8ff; 
-            border-radius: 20px;
-        }}
-
-        .daifuku-img {{
-            width: 300px; /* サイズはここで調整してね */
-            /* アニメーションの設定：3秒かけてゆったり動く */
-            animation: nurunuru 3s infinite ease-in-out;
-            filter: drop-shadow(0px 10px 10px rgba(0,0,0,0.2));
-        }}
-    </style>
-
-    <div class="daifuku-container">
-        <img src="data:image/png;base64,{img_base64}" class="daifuku-img">
+    <div class="tail"></div>
+    
+    <div class="body"></div>
+    
+    <div class="face">
+      <div class="eye left"></div>
+      <div class="eye right"></div>
+      <div class="cheek left"></div>
+      <div class="cheek right"></div>
+      <div class="mouth"></div>
     </div>
-    """
 
-    # HTMLを表示
-    st.markdown(html_code, unsafe_allow_html=True)
+    <div class="heart">♡</div>
+  </div>
+</div>
 
-except FileNotFoundError:
-    st.error(f"エラー: '{image_filename}' が見つからないだっち！画像を同じフォルダに入れてね🍄")
+</body>
+</html>
+"""
 
-st.write("大福みたいに、もちもち呼吸してるイメージだっち！")
+# HTMLを描画
+st.components.v1.html(html_code, height=450)
+
+st.caption("CSS Animation by Streamlit")
