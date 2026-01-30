@@ -12,7 +12,7 @@ st.set_page_config(page_title="ぬるぬる大福キャット", layout="centered
 st.title("大福キャットがぬるぬる動くよ！🍄")
 
 # 画像ファイルのパス（※ここに保存した画像ファイル名を指定してね）
-image_filename = 'daifuku_cat.png'
+image_filename = 'daifuku_cat.jpg'
 
 try:
     # 画像をBase64に変換してHTMLに埋め込む（これでGitHub/Streamlit上でも確実に表示されるよ）
