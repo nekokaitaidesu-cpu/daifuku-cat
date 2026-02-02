@@ -4,12 +4,12 @@ import streamlit.components.v1 as components
 # ページの設定
 st.set_page_config(
     page_title="大福キャットのアスレチック",
-    page_icon="🍄",
+    page_icon="🐾",
     layout="centered"
 )
 
-st.title("Daifuku Athletic Room v21 🍄")
-st.write("猫じゃらしがコンパクトになったっち！小刻みに遊べるよ！🪶")
+st.title("Daifuku Athletic Room")
+# st.write("***")
 
 # HTML/CSS/JSを定義
 html_code = """
