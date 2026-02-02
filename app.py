@@ -326,3 +326,5 @@ html_code = """
 </body>
 </html>
 """
+
+components.html(html_code, height=550)
