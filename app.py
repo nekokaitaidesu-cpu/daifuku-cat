@@ -8,8 +8,8 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("Daifuku Athletic Room")
-# st.write("***")
+st.title("Daifuku Cat Athletic Room")
+# st.write("")
 
 # HTML/CSS/JSを定義
 html_code = """
