@@ -8,8 +8,8 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("My Fluffy Pet Room v2 🍄")
-st.write("普段は大人しいけど、落とすと「ぽよん」ってなるっち！")
+st.title("My Fluffy Pet Room v3 🍄")
+st.write("触らないでいると、勝手にふわふわ動き回るっち！")
 
 # HTML/CSS/JSを定義
 html_code = """
@@ -48,7 +48,7 @@ html_code = """
     left: 125px;
     top: 100px;
     width: 100px;
-    height: 130px;
+    height: 130px; /* 影込みの高さ */
     cursor: grab;
     touch-action: none;
   }
@@ -57,7 +57,7 @@ html_code = """
     cursor: grabbing;
   }
 
-  /* つまんだ時は少し縮こまる（継続） */
+  /* つまんだ時は少し縮こまる */
   #draggable-root.grabbing .cat-wrapper {
     transform: scale(0.9) !important;
     transition: transform 0.1s;
@@ -69,23 +69,26 @@ html_code = """
     width: 100px;
     height: 100px;
     margin: 0 auto;
-    /* 常時のぽよぽよアニメーションは削除したっち！ */
-    /* animation: bounce-float ...;  <-- 削除 */
-    transform-origin: bottom center; /* 下を中心に変形させる */
+    transform-origin: bottom center;
+    transition: transform 0.2s ease-out; /* 動きを少し滑らかに */
   }
 
-  /* ★ここがポイント！着地した瞬間のスライムアニメーション ★ */
+  /* 着地した瞬間のスライムアニメーション */
   .boing-effect {
     animation: slime-bounce 0.4s ease-out;
   }
 
   @keyframes slime-bounce {
     0% { transform: scale(1, 1); }
-    30% { transform: scale(1.25, 0.75); } /* 横に潰れる（むぎゅっ） */
-    50% { transform: scale(0.85, 1.15); } /* 縦に伸びる（びよん） */
-    70% { transform: scale(1.05, 0.95); } /* 少し揺り戻し */
-    100% { transform: scale(1, 1); }      /* 元に戻る */
+    30% { transform: scale(1.25, 0.75); }
+    50% { transform: scale(0.85, 1.15); }
+    70% { transform: scale(1.05, 0.95); }
+    100% { transform: scale(1, 1); }
   }
+
+  /* 左右移動するときに少し体を傾けるクラス */
+  .walking-left .cat-wrapper { transform: rotate(-5deg); }
+  .walking-right .cat-wrapper { transform: rotate(5deg); }
 
   .cat-body {
     width: 100%;
@@ -134,7 +137,6 @@ html_code = """
     background-color: rgba(0,0,0,0.1);
     border-radius: 50%;
     margin: 10px auto 0;
-    /* 影のアニメーションも停止 */
     pointer-events: none;
   }
 
@@ -160,25 +162,31 @@ html_code = """
 
 <script>
   const draggable = document.getElementById('draggable-root');
-  const catVisual = document.getElementById('cat-visual'); // アニメーションさせる対象
+  const catVisual = document.getElementById('cat-visual');
   const room = document.querySelector('.room-container');
   
+  // 物理演算変数
   let posX = 125, posY = 100;
   let velocityX = 0, velocityY = 0;
-  const gravity = 0.6;   // 重力を少し強めに
+  const gravity = 0.6;
   const friction = 0.92;
-  const bounce = -0.3;   // 跳ね返りは少し弱めに（スライム感を出すため）
+  const bounce = -0.3;
 
+  // 状態管理
   let isDragging = false;
   let dragStartX, dragStartY;
-  let animationFrameId;
+  
+  // 自動行動用の変数
+  let idleTimer = 0;      // 次の行動までのカウントダウン
+  let isGrounded = false; // 床に着いているか
 
   function startPhysicsLoop() {
-    if (!animationFrameId) updatePhysics();
+    requestAnimationFrame(updatePhysics);
   }
 
   function updatePhysics() {
     if (!isDragging) {
+      // 1. 重力と摩擦
       velocityY += gravity;
       velocityX *= friction;
       velocityY *= friction;
@@ -186,60 +194,115 @@ html_code = """
       posX += velocityX;
       posY += velocityY;
 
+      // 2. 境界判定（壁・床・天井）
       const roomRect = room.getBoundingClientRect();
       const charRect = draggable.getBoundingClientRect();
       const maxX = roomRect.width - charRect.width;
       const maxY = roomRect.height - charRect.height;
 
-      // --- 床との衝突判定 ---
+      // 床判定
       if (posY > maxY) {
-        const impactSpeed = velocityY; // 衝突時の速度を記録
-        
+        const impactSpeed = velocityY;
         posY = maxY;
-        velocityY *= bounce; 
-        
-        if (Math.abs(velocityY) < 1) velocityY = 0;
+        velocityY *= bounce;
 
-        // ★ここでアニメーション発動判定★
-        // ある程度の勢い(speed > 5)で落ちたときだけ「ぽよん」とさせる
+        // ほぼ止まったら完全に止める
+        if (Math.abs(velocityY) < 1) velocityY = 0;
+        
+        // 激しく落ちたら「ぽよん」
         if (impactSpeed > 5) {
           triggerBounceAnimation();
         }
+
+        isGrounded = true; // 床にいるフラグON
+      } else {
+        isGrounded = false; // 空中にいるフラグOFF
       }
 
       // 天井
-      if (posY < 0) {
-        posY = 0;
-        velocityY *= bounce;
-      }
-      // 壁
-      if (posX < 0) {
-        posX = 0;
-        velocityX *= bounce;
-      }
-      if (posX > maxX) {
-        posX = maxX;
-        velocityX *= bounce;
+      if (posY < 0) { posY = 0; velocityY *= bounce; }
+      // 左壁
+      if (posX < 0) { posX = 0; velocityX *= bounce; }
+      // 右壁
+      if (posX > maxX) { posX = maxX; velocityX *= bounce; }
+
+      // 3. 自動行動（暇なときシステム）
+      // 床にいて、静止していて、ドラッグされていない時
+      if (isGrounded && Math.abs(velocityX) < 0.5 && !isDragging) {
+        handleIdleBehavior();
       }
 
+      // 4. 見た目の更新（移動方向によって傾ける）
+      updateRotation();
+
+      // 位置適用
       draggable.style.left = `${posX}px`;
       draggable.style.top = `${posY}px`;
     }
-    animationFrameId = requestAnimationFrame(updatePhysics);
+
+    requestAnimationFrame(updatePhysics);
   }
 
-  // 「ぽよん」アニメーションを発動させる関数
+  // --- 気まぐれ自動行動システム ---
+  function handleIdleBehavior() {
+    idleTimer--;
+
+    if (idleTimer < 0) {
+      // 次の行動をランダムに決める (0〜3の乱数)
+      const action = Math.floor(Math.random() * 4);
+      
+      // 行動リスト
+      switch(action) {
+        case 0: // 左へ移動
+          velocityX = -3;
+          // たまに小ジャンプも混ぜる
+          if(Math.random() > 0.5) velocityY = -4; 
+          break;
+        case 1: // 右へ移動
+          velocityX = 3;
+          if(Math.random() > 0.5) velocityY = -4;
+          break;
+        case 2: // その場で小ジャンプ（ふわっ）
+          velocityY = -6;
+          break;
+        case 3: // 何もしない（長めの休憩）
+          // 何もしない
+          break;
+      }
+
+      // 次の行動までの待機時間をセット（60フレーム〜180フレーム = 1〜3秒）
+      idleTimer = 60 + Math.random() * 120;
+    }
+  }
+
+  // 移動方向に合わせて少し体を傾ける演出
+  function updateRotation() {
+    if (Math.abs(velocityX) > 1) {
+      if (velocityX > 0) {
+        draggable.classList.add('walking-right');
+        draggable.classList.remove('walking-left');
+      } else {
+        draggable.classList.add('walking-left');
+        draggable.classList.remove('walking-right');
+      }
+    } else {
+      draggable.classList.remove('walking-right');
+      draggable.classList.remove('walking-left');
+    }
+  }
+
+  // 「ぽよん」アニメーション
   function triggerBounceAnimation() {
-    // クラスを一旦外して、リフロー（強制再描画）させてからまたつける
     catVisual.classList.remove('boing-effect');
-    void catVisual.offsetWidth; // これが魔法の呪文（リセット）だっち
+    void catVisual.offsetWidth;
     catVisual.classList.add('boing-effect');
   }
 
+  // --- ドラッグ操作 ---
   function startDrag(e) {
     isDragging = true;
     draggable.classList.add('grabbing');
-    catVisual.classList.remove('boing-effect'); // 掴んだらアニメーション停止
+    catVisual.classList.remove('boing-effect'); 
     
     velocityX = 0;
     velocityY = 0;
@@ -255,14 +318,11 @@ html_code = """
   function drag(e) {
     if (!isDragging) return;
     e.preventDefault();
-
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-
     const roomRect = room.getBoundingClientRect();
     posX = clientX - roomRect.left - dragStartX;
     posY = clientY - roomRect.top - dragStartY;
-
     draggable.style.left = `${posX}px`;
     draggable.style.top = `${posY}px`;
   }
@@ -270,16 +330,19 @@ html_code = """
   function endDrag() {
     isDragging = false;
     draggable.classList.remove('grabbing');
+    // 放した瞬間に次の行動タイマーをリセット（すぐには動かない）
+    idleTimer = 60; 
   }
 
+  // イベントリスナー
   draggable.addEventListener('mousedown', startDrag);
   window.addEventListener('mousemove', drag);
   window.addEventListener('mouseup', endDrag);
-
   draggable.addEventListener('touchstart', startDrag, {passive: false});
   window.addEventListener('touchmove', drag, {passive: false});
   window.addEventListener('touchend', endDrag);
 
+  // 開始
   startPhysicsLoop();
 
 </script>
