@@ -489,5 +489,3 @@ html_code = """
 """
 
 components.html(html_code, height=550)
-
-これでずーっと見てられる「大福キャット・アクアリウム」の完成だっち～！(o^^o)
