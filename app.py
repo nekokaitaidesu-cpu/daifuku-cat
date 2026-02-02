@@ -3,13 +3,13 @@ import streamlit.components.v1 as components
 
 # ページの設定
 st.set_page_config(
-    page_title="ふわふわペットルーム",
+    page_title="大福キャットのお部屋",
     page_icon="🍄",
     layout="centered"
 )
 
-st.title("My Fluffy Pet Room v3 🍄")
-st.write("触らないでいると、勝手にふわふわ動き回るっち！")
+st.title("Daifuku Cat Room 🍄")
+st.write("大福みたいにモチモチな猫ちゃんだっち！")
 
 # HTML/CSS/JSを定義
 html_code = """
@@ -45,10 +45,10 @@ html_code = """
 
   #draggable-root {
     position: absolute;
-    left: 125px;
+    left: 115px; /* サイズ変更に合わせて調整 */
     top: 100px;
-    width: 100px;
-    height: 130px; /* 影込みの高さ */
+    width: 120px; /* 大福なので少し横長に */
+    height: 100px; /* 影込みの高さ */
     cursor: grab;
     touch-action: none;
   }
@@ -63,80 +63,97 @@ html_code = """
     transition: transform 0.1s;
   }
 
-  /* --- 猫のスタイル --- */
+  /* --- 大福キャットのデザイン --- */
   .cat-wrapper {
     position: relative;
-    width: 100px;
-    height: 100px;
+    width: 120px; /* 横幅を広げたっち */
+    height: 80px; /* 高さを低くして「潰れ感」を出したっち */
     margin: 0 auto;
     transform-origin: bottom center;
-    transition: transform 0.2s ease-out; /* 動きを少し滑らかに */
+    transition: transform 0.2s ease-out;
   }
 
-  /* 着地した瞬間のスライムアニメーション */
+  /* 着地した瞬間のぷるんとした動き */
   .boing-effect {
     animation: slime-bounce 0.4s ease-out;
   }
 
   @keyframes slime-bounce {
     0% { transform: scale(1, 1); }
-    30% { transform: scale(1.25, 0.75); }
-    50% { transform: scale(0.85, 1.15); }
-    70% { transform: scale(1.05, 0.95); }
+    30% { transform: scale(1.3, 0.7); }  /* より平べったく */
+    50% { transform: scale(0.8, 1.2); }
+    70% { transform: scale(1.1, 0.9); }
     100% { transform: scale(1, 1); }
   }
 
-  /* 左右移動するときに少し体を傾けるクラス */
+  /* 歩くときのアニメーション */
   .walking-left .cat-wrapper { transform: rotate(-5deg); }
   .walking-right .cat-wrapper { transform: rotate(5deg); }
 
+  /* 体（大福部分） */
   .cat-body {
     width: 100%;
     height: 100%;
-    background-color: #b0b0b0;
-    border-radius: 50% 50% 45% 45%;
+    background-color: #b0b0b0; /* 指定のグレー */
+    /* 上を丸く、下を少し平らにして「地面に置いてある感」を出す */
+    border-radius: 50% 50% 40% 40% / 60% 60% 40% 40%;
     position: relative;
     z-index: 2;
   }
 
+  /* 耳（小さくちょこんと） */
   .cat-ear {
     position: absolute;
-    top: -10px;
+    top: -5px; /* 位置を下げる */
     width: 0;
     height: 0;
-    border-left: 20px solid transparent;
-    border-right: 20px solid transparent;
-    border-bottom: 40px solid #b0b0b0;
+    border-left: 12px solid transparent;
+    border-right: 12px solid transparent;
+    border-bottom: 25px solid #b0b0b0;
     z-index: 1;
   }
-  .ear-left { left: 5px; transform: rotate(-15deg); }
-  .ear-right { right: 5px; transform: rotate(15deg); }
+  .ear-left { left: 15px; transform: rotate(-25deg); }
+  .ear-right { right: 15px; transform: rotate(25deg); }
 
+  /* しっぽ（お尻に丸いのをつける） */
+  .cat-tail {
+    position: absolute;
+    bottom: 5px;
+    right: -5px;
+    width: 20px;
+    height: 20px;
+    background-color: #b0b0b0;
+    border-radius: 50%;
+    z-index: 1;
+  }
+
+  /* 顔（少し下に配置して赤ちゃん顔に） */
   .cat-face {
     position: absolute;
-    top: 50%;
+    top: 60%; /* 顔の位置を下げる */
     left: 50%;
     transform: translate(-50%, -50%);
     z-index: 3;
-    width: 60px;
+    width: 50px;
     display: flex;
     justify-content: space-between;
     align-items: center;
   }
 
   .eye {
-    width: 12px;
-    height: 12px;
+    width: 10px;
+    height: 10px;
     background-color: white;
     border-radius: 50%;
   }
 
+  /* 影（大福の形に合わせて横長に） */
   .shadow {
-    width: 80px;
-    height: 10px;
+    width: 100px;
+    height: 12px;
     background-color: rgba(0,0,0,0.1);
     border-radius: 50%;
-    margin: 10px auto 0;
+    margin: 5px auto 0;
     pointer-events: none;
   }
 
@@ -155,6 +172,7 @@ html_code = """
             <div class="eye"></div>
           </div>
         </div>
+        <div class="cat-tail"></div>
       </div>
       <div class="shadow"></div>
     </div>
@@ -166,19 +184,17 @@ html_code = """
   const room = document.querySelector('.room-container');
   
   // 物理演算変数
-  let posX = 125, posY = 100;
+  let posX = 115, posY = 100;
   let velocityX = 0, velocityY = 0;
   const gravity = 0.6;
   const friction = 0.92;
   const bounce = -0.3;
 
-  // 状態管理
   let isDragging = false;
   let dragStartX, dragStartY;
   
-  // 自動行動用の変数
-  let idleTimer = 0;      // 次の行動までのカウントダウン
-  let isGrounded = false; // 床に着いているか
+  let idleTimer = 0;
+  let isGrounded = false;
 
   function startPhysicsLoop() {
     requestAnimationFrame(updatePhysics);
@@ -186,7 +202,6 @@ html_code = """
 
   function updatePhysics() {
     if (!isDragging) {
-      // 1. 重力と摩擦
       velocityY += gravity;
       velocityX *= friction;
       velocityY *= friction;
@@ -194,7 +209,6 @@ html_code = """
       posX += velocityX;
       posY += velocityY;
 
-      // 2. 境界判定（壁・床・天井）
       const roomRect = room.getBoundingClientRect();
       const charRect = draggable.getBoundingClientRect();
       const maxX = roomRect.width - charRect.width;
@@ -206,36 +220,30 @@ html_code = """
         posY = maxY;
         velocityY *= bounce;
 
-        // ほぼ止まったら完全に止める
         if (Math.abs(velocityY) < 1) velocityY = 0;
         
-        // 激しく落ちたら「ぽよん」
+        // ぽよん判定
         if (impactSpeed > 5) {
           triggerBounceAnimation();
         }
 
-        isGrounded = true; // 床にいるフラグON
+        isGrounded = true;
       } else {
-        isGrounded = false; // 空中にいるフラグOFF
+        isGrounded = false;
       }
 
-      // 天井
+      // 壁・天井判定
       if (posY < 0) { posY = 0; velocityY *= bounce; }
-      // 左壁
       if (posX < 0) { posX = 0; velocityX *= bounce; }
-      // 右壁
       if (posX > maxX) { posX = maxX; velocityX *= bounce; }
 
-      // 3. 自動行動（暇なときシステム）
-      // 床にいて、静止していて、ドラッグされていない時
+      // 自動行動
       if (isGrounded && Math.abs(velocityX) < 0.5 && !isDragging) {
         handleIdleBehavior();
       }
 
-      // 4. 見た目の更新（移動方向によって傾ける）
       updateRotation();
 
-      // 位置適用
       draggable.style.left = `${posX}px`;
       draggable.style.top = `${posY}px`;
     }
@@ -243,39 +251,29 @@ html_code = """
     requestAnimationFrame(updatePhysics);
   }
 
-  // --- 気まぐれ自動行動システム ---
   function handleIdleBehavior() {
     idleTimer--;
-
     if (idleTimer < 0) {
-      // 次の行動をランダムに決める (0〜3の乱数)
       const action = Math.floor(Math.random() * 4);
-      
-      // 行動リスト
       switch(action) {
-        case 0: // 左へ移動
+        case 0: // 左
           velocityX = -3;
-          // たまに小ジャンプも混ぜる
-          if(Math.random() > 0.5) velocityY = -4; 
+          if(Math.random() > 0.5) velocityY = -3; // ジャンプは低めに
           break;
-        case 1: // 右へ移動
+        case 1: // 右
           velocityX = 3;
-          if(Math.random() > 0.5) velocityY = -4;
+          if(Math.random() > 0.5) velocityY = -3;
           break;
-        case 2: // その場で小ジャンプ（ふわっ）
-          velocityY = -6;
+        case 2: // ジャンプ
+          velocityY = -5;
           break;
-        case 3: // 何もしない（長めの休憩）
-          // 何もしない
+        case 3: // 休憩
           break;
       }
-
-      // 次の行動までの待機時間をセット（60フレーム〜180フレーム = 1〜3秒）
       idleTimer = 60 + Math.random() * 120;
     }
   }
 
-  // 移動方向に合わせて少し体を傾ける演出
   function updateRotation() {
     if (Math.abs(velocityX) > 1) {
       if (velocityX > 0) {
@@ -291,14 +289,12 @@ html_code = """
     }
   }
 
-  // 「ぽよん」アニメーション
   function triggerBounceAnimation() {
     catVisual.classList.remove('boing-effect');
     void catVisual.offsetWidth;
     catVisual.classList.add('boing-effect');
   }
 
-  // --- ドラッグ操作 ---
   function startDrag(e) {
     isDragging = true;
     draggable.classList.add('grabbing');
@@ -330,11 +326,9 @@ html_code = """
   function endDrag() {
     isDragging = false;
     draggable.classList.remove('grabbing');
-    // 放した瞬間に次の行動タイマーをリセット（すぐには動かない）
     idleTimer = 60; 
   }
 
-  // イベントリスナー
   draggable.addEventListener('mousedown', startDrag);
   window.addEventListener('mousemove', drag);
   window.addEventListener('mouseup', endDrag);
@@ -342,9 +336,7 @@ html_code = """
   window.addEventListener('touchmove', drag, {passive: false});
   window.addEventListener('touchend', endDrag);
 
-  // 開始
   startPhysicsLoop();
-
 </script>
 
 </body>
