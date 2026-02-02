@@ -8,8 +8,8 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("My Fluffy Pet Room 🍄")
-st.write("猫ちゃんを高いところから離すと、ふんわり落ちるっち！")
+st.title("My Fluffy Pet Room v2 🍄")
+st.write("普段は大人しいけど、落とすと「ぽよん」ってなるっち！")
 
 # HTML/CSS/JSを定義
 html_code = """
@@ -31,50 +31,60 @@ html_code = """
     -webkit-user-select: none;
   }
 
-  /* --- お部屋のスタイル --- */
   .room-container {
     position: relative;
-    width: 350px;  /* 部屋の幅 */
-    height: 400px; /* 部屋の高さ */
-    background-color: #fdfaf5; /* 壁紙の色 */
-    border: 4px solid #d4c4b5; /* 枠の色 */
-    border-bottom: 8px solid #bfab99; /* 床を少し厚く */
+    width: 350px;
+    height: 400px;
+    background-color: #fdfaf5;
+    border: 4px solid #d4c4b5;
+    border-bottom: 8px solid #bfab99;
     border-radius: 12px;
     box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-    overflow: hidden; /* 部屋からはみ出さないようにする */
+    overflow: hidden;
   }
 
-  /* --- 動かせるキャラクターの親要素 --- */
   #draggable-root {
     position: absolute;
-    left: 125px; /* 初期位置X (部屋の中央付近) */
-    top: 100px;  /* 初期位置Y */
+    left: 125px;
+    top: 100px;
     width: 100px;
-    height: 130px; /* 影を含む全体の高さ */
+    height: 130px;
     cursor: grab;
     touch-action: none;
-    /* transitionは物理演算と干渉するので削除 */
   }
 
   #draggable-root.grabbing {
     cursor: grabbing;
   }
 
-  /* つまんだ時に中の要素だけを縮小させる */
-  #draggable-root.grabbing .cat-wrapper,
-  #draggable-root.grabbing .shadow {
-    transform: scale(0.9) !important; /* CSSアニメーションを一時的に上書き */
+  /* つまんだ時は少し縮こまる（継続） */
+  #draggable-root.grabbing .cat-wrapper {
+    transform: scale(0.9) !important;
     transition: transform 0.1s;
   }
 
-  /* --- 以下、猫のアニメーションCSS --- */
+  /* --- 猫のスタイル --- */
   .cat-wrapper {
     position: relative;
     width: 100px;
     height: 100px;
     margin: 0 auto;
-    animation: bounce-float 2s infinite ease-in-out;
-    pointer-events: none;
+    /* 常時のぽよぽよアニメーションは削除したっち！ */
+    /* animation: bounce-float ...;  <-- 削除 */
+    transform-origin: bottom center; /* 下を中心に変形させる */
+  }
+
+  /* ★ここがポイント！着地した瞬間のスライムアニメーション ★ */
+  .boing-effect {
+    animation: slime-bounce 0.4s ease-out;
+  }
+
+  @keyframes slime-bounce {
+    0% { transform: scale(1, 1); }
+    30% { transform: scale(1.25, 0.75); } /* 横に潰れる（むぎゅっ） */
+    50% { transform: scale(0.85, 1.15); } /* 縦に伸びる（びよん） */
+    70% { transform: scale(1.05, 0.95); } /* 少し揺り戻し */
+    100% { transform: scale(1, 1); }      /* 元に戻る */
   }
 
   .cat-body {
@@ -123,30 +133,18 @@ html_code = """
     height: 10px;
     background-color: rgba(0,0,0,0.1);
     border-radius: 50%;
-    margin: 10px auto 0; /* マージンを調整 */
-    animation: shadow-scale 2s infinite ease-in-out;
+    margin: 10px auto 0;
+    /* 影のアニメーションも停止 */
     pointer-events: none;
   }
 
-  /* 物理演算中はCSSアニメーションを止めるクラス（今回は使わないアプローチに変更） */
-  /* .physics-active .cat-wrapper, .physics-active .shadow { animation: none !important; transform: scale(1) translateY(0) !important; } */
-
-  @keyframes bounce-float {
-    0%, 100% { transform: translateY(0) scale(1); }
-    50% { transform: translateY(-15px) scale(1.05, 0.95); }
-  }
-
-  @keyframes shadow-scale {
-    0%, 100% { transform: scale(1); opacity: 0.3; }
-    50% { transform: scale(0.8); opacity: 0.1; }
-  }
 </style>
 </head>
 <body>
 
   <div class="room-container">
     <div id="draggable-root">
-      <div class="cat-wrapper">
+      <div class="cat-wrapper" id="cat-visual">
         <div class="cat-ear ear-left"></div>
         <div class="cat-ear ear-right"></div>
         <div class="cat-body">
@@ -162,107 +160,93 @@ html_code = """
 
 <script>
   const draggable = document.getElementById('draggable-root');
+  const catVisual = document.getElementById('cat-visual'); // アニメーションさせる対象
   const room = document.querySelector('.room-container');
   
-  // 物理演算パラメータ
-  let posX = 125, posY = 100; // 初期位置
-  let velocityX = 0, velocityY = 0; // 速度
-  const gravity = 0.5; // 重力加速度（値が大きいほど速く落ちる）
-  const friction = 0.92; // 空気抵抗（値が小さいほど「ふんわり」する）
-  const bounce = -0.4; // 跳ね返り係数（マイナスの値。0に近いほど跳ねない）
+  let posX = 125, posY = 100;
+  let velocityX = 0, velocityY = 0;
+  const gravity = 0.6;   // 重力を少し強めに
+  const friction = 0.92;
+  const bounce = -0.3;   // 跳ね返りは少し弱めに（スライム感を出すため）
 
   let isDragging = false;
   let dragStartX, dragStartY;
   let animationFrameId;
 
-  // ループ処理を開始する関数
   function startPhysicsLoop() {
-    if (!animationFrameId) {
-      updatePhysics();
-    }
+    if (!animationFrameId) updatePhysics();
   }
 
-  // ループ処理を停止する関数
-  function stopPhysicsLoop() {
-    if (animationFrameId) {
-      cancelAnimationFrame(animationFrameId);
-      animationFrameId = null;
-    }
-  }
-
-  // 物理演算のメインループ
   function updatePhysics() {
     if (!isDragging) {
-      // 重力を加える
       velocityY += gravity;
-      
-      // 空気抵抗を加える（速度を減衰させる）
       velocityX *= friction;
       velocityY *= friction;
 
-      // 速度を位置に加える
       posX += velocityX;
       posY += velocityY;
 
-      // 部屋の境界値を取得
       const roomRect = room.getBoundingClientRect();
       const charRect = draggable.getBoundingClientRect();
       const maxX = roomRect.width - charRect.width;
       const maxY = roomRect.height - charRect.height;
 
-      // --- 衝突判定 ---
-      
-      // 床との衝突
+      // --- 床との衝突判定 ---
       if (posY > maxY) {
-        posY = maxY; // 床の位置に戻す
-        velocityY *= bounce; // 速度を反転して減衰させる（跳ね返り）
+        const impactSpeed = velocityY; // 衝突時の速度を記録
         
-        // 速度が十分に小さくなったら止める（微振動防止）
+        posY = maxY;
+        velocityY *= bounce; 
+        
         if (Math.abs(velocityY) < 1) velocityY = 0;
+
+        // ★ここでアニメーション発動判定★
+        // ある程度の勢い(speed > 5)で落ちたときだけ「ぽよん」とさせる
+        if (impactSpeed > 5) {
+          triggerBounceAnimation();
+        }
       }
 
-      // 天井との衝突
+      // 天井
       if (posY < 0) {
         posY = 0;
         velocityY *= bounce;
       }
-
-      // 左壁との衝突
+      // 壁
       if (posX < 0) {
         posX = 0;
         velocityX *= bounce;
       }
-
-      // 右壁との衝突
       if (posX > maxX) {
         posX = maxX;
         velocityX *= bounce;
       }
 
-      // 新しい位置を適用
       draggable.style.left = `${posX}px`;
       draggable.style.top = `${posY}px`;
     }
-
-    // 次のフレームをリクエスト
     animationFrameId = requestAnimationFrame(updatePhysics);
   }
 
-
-  // --- ドラッグ操作関連 ---
+  // 「ぽよん」アニメーションを発動させる関数
+  function triggerBounceAnimation() {
+    // クラスを一旦外して、リフロー（強制再描画）させてからまたつける
+    catVisual.classList.remove('boing-effect');
+    void catVisual.offsetWidth; // これが魔法の呪文（リセット）だっち
+    catVisual.classList.add('boing-effect');
+  }
 
   function startDrag(e) {
     isDragging = true;
     draggable.classList.add('grabbing');
+    catVisual.classList.remove('boing-effect'); // 掴んだらアニメーション停止
     
-    // 物理演算の速度をリセット（掴んだ瞬間は静止）
     velocityX = 0;
     velocityY = 0;
 
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     
-    // クリックした位置と要素の左上との差分を記録
     const rect = draggable.getBoundingClientRect();
     dragStartX = clientX - rect.left;
     dragStartY = clientY - rect.top;
@@ -275,12 +259,10 @@ html_code = """
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
 
-    // 親要素（部屋）からの相対座標を計算
     const roomRect = room.getBoundingClientRect();
     posX = clientX - roomRect.left - dragStartX;
     posY = clientY - roomRect.top - dragStartY;
 
-    // ドラッグ中も位置を即時反映
     draggable.style.left = `${posX}px`;
     draggable.style.top = `${posY}px`;
   }
@@ -288,10 +270,8 @@ html_code = """
   function endDrag() {
     isDragging = false;
     draggable.classList.remove('grabbing');
-    // 手を離した瞬間から物理演算が再開される
   }
 
-  // イベントリスナー登録
   draggable.addEventListener('mousedown', startDrag);
   window.addEventListener('mousemove', drag);
   window.addEventListener('mouseup', endDrag);
@@ -300,7 +280,6 @@ html_code = """
   window.addEventListener('touchmove', drag, {passive: false});
   window.addEventListener('touchend', endDrag);
 
-  // ページ読み込み時に物理演算ループを開始
   startPhysicsLoop();
 
 </script>
