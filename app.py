@@ -8,8 +8,8 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("Daifuku Athletic Room v2 🍄")
-st.write("今度こそ！華麗にジャンプして足場に乗るっち！")
+st.title("Daifuku Athletic Room v3 🍄")
+st.write("「絶対に着地する」スーパー・ジャンプを実装したっち！")
 
 # HTML/CSS/JSを定義
 html_code = """
@@ -192,6 +192,7 @@ html_code = """
   const room = document.querySelector('.room-container');
   const platforms = document.querySelectorAll('.platform');
   
+  // 物理変数
   let posX = 130, posY = 300;
   let velocityX = 0, velocityY = 0;
   const gravity = 0.6;
@@ -207,58 +208,126 @@ html_code = """
   let isGrounded = false;
   let currentPlatform = null;
   
-  // ★重要：自動ジャンプ中は摩擦を無視するためのフラグ
-  let isAutoJumping = false;
+  // ★完璧ジャンプ用のアニメーション状態管理
+  let jumpAnim = {
+    active: false,
+    startTime: 0,
+    duration: 0,
+    startX: 0,
+    startY: 0,
+    targetEl: null, // 目標の足場要素（nullなら床）
+    targetFloorX: 0, // 床の場合の目標X
+    targetFloorY: 0, // 床の場合の目標Y
+    peakHeight: 0 // ジャンプの頂点の高さ
+  };
 
   function startPhysicsLoop() {
     requestAnimationFrame(updatePhysics);
   }
 
-  function updatePhysics() {
+  function updatePhysics(timestamp) {
+    // 1. ジャンプアニメーション中の処理（物理演算を無視して強制移動）
+    if (jumpAnim.active) {
+      const elapsed = timestamp - jumpAnim.startTime;
+      const progress = Math.min(elapsed / jumpAnim.duration, 1.0); // 0.0 〜 1.0
+
+      // 目標地点の計算（足場が動いても追従するように毎回取得）
+      let targetX, targetY;
+      
+      if (jumpAnim.targetEl) {
+        // 足場の場合
+        const pLeft = parseFloat(jumpAnim.targetEl.style.left);
+        const pTop = parseFloat(jumpAnim.targetEl.style.top);
+        const pWidth = parseFloat(jumpAnim.targetEl.style.width);
+        targetX = pLeft + pWidth / 2 - 45; // 中心
+        targetY = pTop - 60; // 足場の上
+      } else {
+        // 床の場合
+        targetX = jumpAnim.targetFloorX;
+        targetY = jumpAnim.targetFloorY;
+      }
+
+      // イージング関数（滑らかに）
+      // X軸: 線形補間
+      const currentX = jumpAnim.startX + (targetX - jumpAnim.startX) * progress;
+      
+      // Y軸: 放物線（ベジェ曲線的な計算）
+      // progress 0.5 の時に peakHeight に達するようにする
+      // 公式: (1-t)^2 * start + 2(1-t)t * control + t^2 * end
+      // 制御点(Control Point)の高さを計算して調整
+      
+      // シンプルな放物線: y = start + (target - start)*t - 4*H*t*(1-t)
+      // H = peakHeight (ジャンプの高さ)
+      const heightOffset = 4 * jumpAnim.peakHeight * progress * (1 - progress);
+      const baseY = jumpAnim.startY + (targetY - jumpAnim.startY) * progress;
+      const currentY = baseY - heightOffset;
+
+      // 座標適用
+      posX = currentX;
+      posY = currentY;
+      catRoot.style.left = `${posX}px`;
+      catRoot.style.top = `${posY}px`;
+
+      // 向きの更新
+      const direction = targetX - jumpAnim.startX;
+      updateDirectionBySpeed(direction);
+
+      // 終了判定
+      if (progress >= 1.0) {
+        // 着地！
+        jumpAnim.active = false;
+        velocityX = 0; 
+        velocityY = 0;
+        
+        // 足場の上なら登録
+        if (jumpAnim.targetEl) {
+          currentPlatform = jumpAnim.targetEl;
+        } else {
+          currentPlatform = null; // 床
+        }
+        isGrounded = true;
+        triggerBounceAnimation();
+      }
+      
+      requestAnimationFrame(updatePhysics);
+      return; // 物理演算処理はスキップ
+    }
+
+
+    // 2. 通常の物理演算（ドラッグ中以外）
     if (!isDragging || activeDragEl !== catRoot) {
       velocityY += gravity;
-
-      // ★自動ジャンプ中（空中）は摩擦をかけない！これで狙った場所に届く！
-      if (!isAutoJumping) {
-        velocityX *= friction;
-      }
+      velocityX *= friction;
       velocityY *= friction;
 
       posX += velocityX;
       posY += velocityY;
 
       const roomRect = room.getBoundingClientRect();
-      
       const maxX = roomRect.width - 90;
       const maxY = roomRect.height - 80;
 
       let landedThisFrame = false;
 
       // --- 足場との衝突判定 ---
-      // 落下中のみ判定
+      // 落下中のみ
       if (velocityY >= 0) {
         platforms.forEach(plat => {
           const pLeft = parseFloat(plat.style.left);
           const pTop = parseFloat(plat.style.top);
           const pWidth = parseFloat(plat.style.width);
+          
+          const catFootX = posX + 45;
+          const catFootY = posY + 60;
 
-          const catFootX = posX + 45; // 中心
-          const catFootY = posY + 60; // 足元
-
-          // 足場の範囲内、かつ高さが合致
           if (catFootX >= pLeft && catFootX <= pLeft + pWidth) {
-             if (catFootY >= pTop - 10 && catFootY <= pTop + 20) { // 判定を少し広げた
-               posY = pTop - 60; // 完全に足場の上に乗せる
+             // 判定を少し甘めに
+             if (catFootY >= pTop - 15 && catFootY <= pTop + 20) {
+               posY = pTop - 60;
                velocityY = 0;
-               velocityX = 0; // 着地したら滑らないように止める
+               velocityX = 0;
                landedThisFrame = true;
                currentPlatform = plat;
-               
-               // ジャンプ成功！モード解除
-               if (isAutoJumping) {
-                 isAutoJumping = false;
-                 triggerBounceAnimation(); // 着地ぽよん
-               }
              }
           }
         });
@@ -267,30 +336,35 @@ html_code = """
       // --- 床との衝突判定 ---
       if (!landedThisFrame && posY > maxY) {
         posY = maxY;
-        velocityY = 0; // 床でも跳ねずにピタッと止める（大福感）
+        velocityY = 0;
         velocityX = 0;
         landedThisFrame = true;
-        currentPlatform = null; // 床なのでnull
-        
-        if (isAutoJumping) {
-           isAutoJumping = false;
-           triggerBounceAnimation();
-        }
+        currentPlatform = null;
+      }
+
+      // 足場から落ちたかどうかのチェック
+      // 今「乗ってる」はずなのに、座標が足場外なら currentPlatform を解除
+      if (currentPlatform) {
+         const pLeft = parseFloat(currentPlatform.style.left);
+         const pWidth = parseFloat(currentPlatform.style.width);
+         const catCenter = posX + 45;
+         if (catCenter < pLeft || catCenter > pLeft + pWidth) {
+            currentPlatform = null; // 足場から外れた（落下開始）
+         }
       }
 
       isGrounded = landedThisFrame;
 
-      // 壁・天井
       if (posY < 0) { posY = 0; velocityY *= bounce; }
       if (posX < 0) { posX = 0; velocityX *= bounce; }
       if (posX > maxX) { posX = maxX; velocityX *= bounce; }
 
-      // 自動行動AI (接地していて、かつ自動ジャンプ中でない時)
-      if (isGrounded && !isDragging && !isAutoJumping) {
+      // 自動行動AI
+      if (isGrounded && !isDragging) {
         handleIdleBehavior();
       }
 
-      updateDirection();
+      updateDirectionBySpeed(velocityX);
 
       catRoot.style.left = `${posX}px`;
       catRoot.style.top = `${posY}px`;
@@ -317,84 +391,87 @@ html_code = """
         case 2: // 休憩
           break;
         case 3: 
-        case 4: // 特殊ジャンプ（足場⇔床）
-          performSpecialJump();
+        case 4: // 特殊ジャンプ（確実モード）
+          startPerfectJump();
           break;
       }
       idleTimer = 60 + Math.random() * 100;
     }
   }
 
-  function performSpecialJump() {
-    let targetX, targetY;
+  function startPerfectJump() {
     const roomRect = room.getBoundingClientRect();
     const maxX = roomRect.width - 90;
     const maxY = roomRect.height - 80;
+    
+    let targetEl = null; // 目標足場
+    let tFloorX = 0;
+    let tFloorY = maxY;
 
     // A. 今、足場に乗っている場合 -> 「床」または「別の足場」へ
     if (currentPlatform) {
-       // 70%の確率で床へ降りる、30%で別の足場へ（もしあれば）
-       if (Math.random() < 0.7 || platforms.length < 2) {
-          // 床のランダムな位置へ
-          targetX = Math.random() * maxX;
-          targetY = maxY; // 床のY座標
+       // 別の足場を探す
+       let otherPlats = [];
+       platforms.forEach(p => { if(p !== currentPlatform) otherPlats.push(p); });
+       
+       // 70%で床、30%で別の足場（あれば）
+       if (otherPlats.length > 0 && Math.random() > 0.6) {
+          targetEl = otherPlats[Math.floor(Math.random() * otherPlats.length)];
        } else {
-          // 別の足場を探す
-          let otherPlats = [];
-          platforms.forEach(p => { if(p !== currentPlatform) otherPlats.push(p); });
-          const targetPlat = otherPlats[Math.floor(Math.random() * otherPlats.length)];
-          const pLeft = parseFloat(targetPlat.style.left);
-          const pWidth = parseFloat(targetPlat.style.width);
-          const pTop = parseFloat(targetPlat.style.top);
-          
-          targetX = pLeft + pWidth / 2 - 45; // 足場中心
-          targetY = pTop - 60; // 足場の上
+          // 床へ
+          targetEl = null;
+          tFloorX = Math.random() * maxX;
        }
     } 
     // B. 今、床にいる場合 -> 「足場」へ
     else {
-       // ランダムな足場を選ぶ
-       const targetPlat = platforms[Math.floor(Math.random() * platforms.length)];
-       const pLeft = parseFloat(targetPlat.style.left);
-       const pWidth = parseFloat(targetPlat.style.width);
-       const pTop = parseFloat(targetPlat.style.top);
-       
-       targetX = pLeft + pWidth / 2 - 45;
-       targetY = pTop - 60;
+       targetEl = platforms[Math.floor(Math.random() * platforms.length)];
     }
 
-    // --- 放物線の計算（摩擦無視前提） ---
-    // 頂点高さの設定（現在地と目的地より高い位置）
-    const startY = posY;
-    const peakHeight = Math.min(startY, targetY) - 80; // 少なくとも80px上に飛ぶ
-    
-    const h1 = startY - peakHeight; // 上昇距離
-    const h2 = targetY - peakHeight; // 下降距離
-    
-    // 上昇時間 t1 = sqrt(2 * h1 / g)
-    const t1 = Math.sqrt(2 * h1 / gravity);
-    // 下降時間 t2 = sqrt(2 * h2 / g)
-    const t2 = Math.sqrt(2 * h2 / gravity);
-    
-    const totalTime = t1 + t2;
+    // --- ジャンプアニメーション開始設定 ---
+    jumpAnim.active = true;
+    jumpAnim.startTime = performance.now();
+    jumpAnim.startX = posX;
+    jumpAnim.startY = posY;
+    jumpAnim.targetEl = targetEl;
+    jumpAnim.targetFloorX = tFloorX;
+    jumpAnim.targetFloorY = tFloorY;
 
-    // 初速度計算
-    const vY = -Math.sqrt(2 * gravity * h1); // 上向き初速
-    const vX = (targetX - posX) / totalTime; // 水平速度
+    // 目標のY座標を取得（高さ計算用）
+    let destY;
+    if (targetEl) {
+       destY = parseFloat(targetEl.style.top) - 60;
+    } else {
+       destY = tFloorY;
+    }
 
-    // ジャンプ実行！
-    velocityY = vY;
-    velocityX = vX;
-    isAutoJumping = true; // ★摩擦無効モードON
-    
-    triggerBounceAnimation(); // 勢いよく
+    // ジャンプの高さ設定（今の位置と目標のうち、高い方よりもさらに80px上まで飛ぶ）
+    const highestPoint = Math.min(posY, destY);
+    const apex = highestPoint - 80;
+    // 高さの差分（現在のY座標からの相対値）
+    // 数式上 heightOffset = 4 * H * ... なので、H は頂点までの距離
+    // H = startY - apex; だが、移動中にYが変化するので単純に「一番高いところへの差分」＋αを設定
+    jumpAnim.peakHeight = 120 + Math.abs(posY - destY) * 0.2; // 距離に応じて少し高く
+
+    // 距離に応じた時間設定
+    let dist = 0;
+    if(targetEl) {
+        const pLeft = parseFloat(targetEl.style.left);
+        dist = Math.abs((pLeft + parseFloat(targetEl.style.width)/2) - posX);
+    } else {
+        dist = Math.abs(tFloorX - posX);
+    }
+    jumpAnim.duration = 600 + dist * 1.5; // 近ければ速く、遠ければゆっくり
+
+    // ジャンプ直前の溜めモーション（見た目だけ）
+    triggerBounceAnimation();
   }
 
-  function updateDirection() {
+  function updateDirectionBySpeed(val) {
     catFace.classList.remove('face-left', 'face-right');
     catRoot.classList.remove('walking-left', 'walking-right');
-    if (Math.abs(velocityX) > 0.5) {
-      if (velocityX > 0) {
+    if (Math.abs(val) > 0.1) {
+      if (val > 0) {
         catFace.classList.add('face-right');
         catRoot.classList.add('walking-right');
       } else {
@@ -418,15 +495,14 @@ html_code = """
     activeDragEl.classList.add('grabbing');
     
     if (activeDragEl === catRoot) {
+      jumpAnim.active = false; // 強制ジャンプ中断
       catVisual.classList.remove('boing-effect'); 
       velocityX = 0; velocityY = 0;
       currentPlatform = null;
-      isAutoJumping = false; // ドラッグしたら自動モード解除
     }
 
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    const roomRect = room.getBoundingClientRect();
     const elemRect = activeDragEl.getBoundingClientRect();
 
     dragOffsetLeft = clientX - elemRect.left;
@@ -436,7 +512,6 @@ html_code = """
   function drag(e) {
     if (!isDragging || !activeDragEl) return;
     e.preventDefault();
-    
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     const roomRect = room.getBoundingClientRect();
@@ -448,7 +523,6 @@ html_code = """
       posX = newLeft;
       posY = newTop;
     }
-    
     activeDragEl.style.left = `${newLeft}px`;
     activeDragEl.style.top = `${newTop}px`;
   }
@@ -474,4 +548,11 @@ html_code = """
 </html>
 """
 
-components.html(html_code, height=550)
+### これでどうだっち！？🍄✨
+
+今回は物理演算を一時的に無視して、**「絶対に目的地へたどり着くルート」を強制的に通る** ようにしたっち。
+だから、頭をぶつけたり、届かなくて落ちることはもうないっち！
+
+しかも、**「ホーミング機能」** つきだから、大福ちゃんがジャンプしている最中に、主さんが意地悪して足場をドラッグして動かしても、**空中で軌道修正して追いかけて乗ってくる** はずだっち！
+
+ちょっと執念深くて可愛い大福ちゃんになったから、ぜひ試してみてほしいっち！(o^^o)
