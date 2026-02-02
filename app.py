@@ -8,8 +8,8 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("Daifuku Athletic Room v4 🍄")
-st.write("足場の上で、気持ちよさそうに寝るようになったっち！")
+st.title("Daifuku Athletic Room v5 🍄")
+st.write("スヤスヤ…ぽよぽよ…寝息が聞こえてきそうだっち！")
 
 # HTML/CSS/JSを定義
 html_code = """
@@ -76,6 +76,7 @@ html_code = """
     transition: transform 0.2s ease-out;
   }
 
+  /* 着地時のアニメーション */
   .boing-effect { animation: slime-bounce 0.4s ease-out; }
   @keyframes slime-bounce {
     0% { transform: scale(1, 1); }
@@ -83,6 +84,17 @@ html_code = """
     50% { transform: scale(0.8, 1.2); }
     70% { transform: scale(1.1, 0.9); }
     100% { transform: scale(1, 1); }
+  }
+
+  /* ★ここが追加ポイント！寝息モーション★ */
+  /* transformを上書きするので !important をつけて優先させるっち */
+  .sleepy {
+    animation: sleep-breath 3s infinite ease-in-out !important;
+  }
+
+  @keyframes sleep-breath {
+    0%, 100% { transform: scale(1, 1); }
+    50% { transform: scale(1.04, 0.96) translateY(1px); } /* 少し潰れて沈む（吐く） */
   }
 
   .walking-left .cat-wrapper { transform: rotate(-5deg); }
@@ -138,20 +150,21 @@ html_code = """
   .face-left { transform: translate(calc(-50% - 5px), -50%); }
   .face-right { transform: translate(calc(-50% + 5px), -50%); }
 
-  /* 通常の目 */
+  /* 目 */
   .eye {
     width: 8px;
     height: 8px;
     background-color: white;
     border-radius: 50%;
-    transition: all 0.2s ease-out; /* 目を閉じるときのアニメーション */
+    transition: all 0.2s ease-out;
   }
 
-  /* ★ここが追加ポイント！寝ている時の目★ */
+  /* 寝ている時の目 */
   .sleepy .eye {
-    height: 2px; /* 高さを潰して目を閉じたように見せる */
+    height: 2px;
     border-radius: 1px;
-    transform: scaleX(1.2); /* 少し横長にして気持ちよさそうに */
+    transform: scaleX(1.2);
+    margin-top: 2px; /* 少し位置を下げる */
   }
 
   .shadow {
@@ -239,9 +252,10 @@ html_code = """
 
   function updatePhysics(timestamp) {
     if (jumpAnim.active) {
-      // --- ジャンプアニメーション処理 (省略: 前と同じ) ---
+      // ジャンプ中は強制移動
       const elapsed = timestamp - jumpAnim.startTime;
       const progress = Math.min(elapsed / jumpAnim.duration, 1.0);
+      
       let targetX, targetY;
       if (jumpAnim.targetEl) {
         const pLeft = parseFloat(jumpAnim.targetEl.style.left);
@@ -253,16 +267,20 @@ html_code = """
         targetX = jumpAnim.targetFloorX;
         targetY = jumpAnim.targetFloorY;
       }
+
       const currentX = jumpAnim.startX + (targetX - jumpAnim.startX) * progress;
       const heightOffset = 4 * jumpAnim.peakHeight * progress * (1 - progress);
       const baseY = jumpAnim.startY + (targetY - jumpAnim.startY) * progress;
       const currentY = baseY - heightOffset;
+
       posX = currentX;
       posY = currentY;
       catRoot.style.left = `${posX}px`;
       catRoot.style.top = `${posY}px`;
+
       const direction = targetX - jumpAnim.startX;
       updateDirectionBySpeed(direction);
+
       if (progress >= 1.0) {
         jumpAnim.active = false;
         velocityX = 0; 
@@ -320,12 +338,14 @@ html_code = """
         currentPlatform = null;
       }
 
+      // 足場から落ちた判定
       if (currentPlatform) {
          const pLeft = parseFloat(currentPlatform.style.left);
          const pWidth = parseFloat(currentPlatform.style.width);
          const catCenter = posX + 45;
          if (catCenter < pLeft || catCenter > pLeft + pWidth) {
             currentPlatform = null;
+            wakeUp(); // 落ちたら起きる
          }
       }
 
@@ -335,12 +355,12 @@ html_code = """
       if (posX < 0) { posX = 0; velocityX *= bounce; }
       if (posX > maxX) { posX = maxX; velocityX *= bounce; }
 
-      // 自動行動AI
+      // 自動行動
       if (isGrounded && !isDragging) {
         handleIdleBehavior();
       }
 
-      // 寝ている間は向きの更新をしない（じっとしている）
+      // 寝ていないときだけ向きを更新
       if (!catVisual.classList.contains('sleepy')) {
           updateDirectionBySpeed(velocityX);
       }
@@ -355,65 +375,55 @@ html_code = """
   function handleIdleBehavior() {
     idleTimer--;
     if (idleTimer < 0) {
-      // 行動開始時に必ず「寝る」状態を解除する
-      wakeUp();
+      wakeUp(); // 行動切り替え時に一旦起きる
 
-      // A. 今、足場に乗っている場合 -> 「寝る」か「移動ジャンプ」
       if (currentPlatform) {
-          // 60%で寝る、40%でジャンプ移動
+          // 足場にいるなら高確率で寝る
           if (Math.random() < 0.6) {
-              // 寝るアクション
               startSleeping();
           } else {
-              // ジャンプ移動
               startPerfectJump();
           }
-      }
-      // B. 今、床にいる場合 -> 従来通りのランダム行動
-      else {
+      } else {
+          // 床ならランダム
           const action = Math.floor(Math.random() * 5); 
           switch(action) {
-            case 0: velocityX = -3; if(Math.random()>0.7) velocityY = -3; break; // 左
-            case 1: velocityX = 3; if(Math.random()>0.7) velocityY = -3; break;  // 右
-            case 2: break; // 休憩
+            case 0: velocityX = -3; if(Math.random()>0.7) velocityY = -3; break;
+            case 1: velocityX = 3; if(Math.random()>0.7) velocityY = -3; break;
+            case 2: break;
             case 3: 
-            case 4: startPerfectJump(); break; // ジャンプ移動
+            case 4: startPerfectJump(); break;
           }
       }
       
-      // 次の行動までの時間（寝る場合は長めにする）
+      // 寝る場合は長めに待機
       if (catVisual.classList.contains('sleepy')) {
-          idleTimer = 120 + Math.random() * 180; // 2〜5秒寝る
+          idleTimer = 180 + Math.random() * 180; // 3〜6秒寝る
       } else {
           idleTimer = 60 + Math.random() * 100;
       }
     }
   }
 
-  // ★「寝る」を開始する関数★
   function startSleeping() {
       catVisual.classList.add('sleepy');
-      // 寝るときは体の傾きや顔の向きもリセットしてリラックス
       catFace.classList.remove('face-left', 'face-right');
       catRoot.classList.remove('walking-left', 'walking-right');
       velocityX = 0;
       velocityY = 0;
   }
 
-  // ★「起こす」関数★
   function wakeUp() {
       catVisual.classList.remove('sleepy');
   }
 
   function startPerfectJump() {
-    // (省略: 前と同じ)
     const roomRect = room.getBoundingClientRect();
     const maxX = roomRect.width - 90;
-    const maxY = roomRect.height - 80;
     
     let targetEl = null;
     let tFloorX = 0;
-    let tFloorY = maxY;
+    let tFloorY = roomRect.height - 80;
 
     if (currentPlatform) {
        let otherPlats = [];
@@ -444,7 +454,6 @@ html_code = """
     }
 
     const highestPoint = Math.min(posY, destY);
-    const apex = highestPoint - 80;
     jumpAnim.peakHeight = 120 + Math.abs(posY - destY) * 0.2;
 
     let dist = 0;
@@ -459,7 +468,6 @@ html_code = """
   }
 
   function updateDirectionBySpeed(val) {
-    // (省略: 前と同じ)
     catFace.classList.remove('face-left', 'face-right');
     catRoot.classList.remove('walking-left', 'walking-right');
     if (Math.abs(val) > 0.1) {
@@ -487,7 +495,6 @@ html_code = """
     activeDragEl.classList.add('grabbing');
     
     if (activeDragEl === catRoot) {
-      // ドラッグ開始時に必ず起こす！
       wakeUp();
       jumpAnim.active = false;
       catVisual.classList.remove('boing-effect'); 
@@ -504,7 +511,6 @@ html_code = """
   }
 
   function drag(e) {
-    // (省略: 前と同じ)
     if (!isDragging || !activeDragEl) return;
     e.preventDefault();
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -521,7 +527,6 @@ html_code = """
   }
 
   function endDrag() {
-    // (省略: 前と同じ)
     if (activeDragEl) activeDragEl.classList.remove('grabbing');
     isDragging = false;
     activeDragEl = null;
@@ -541,4 +546,5 @@ html_code = """
 </body>
 </html>
 """
+
 components.html(html_code, height=550)
