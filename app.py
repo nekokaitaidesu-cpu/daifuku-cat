@@ -8,8 +8,8 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("Daifuku Cat Room v2 🍄")
-st.write("お部屋が広くなって、キョロキョロするようになったっち！")
+st.title("Daifuku Cat Room v3 🍄")
+st.write("右に向くとき、しっぽの位置も変わるようになったっち！")
 
 # HTML/CSS/JSを定義
 html_code = """
@@ -43,13 +43,12 @@ html_code = """
     overflow: hidden;
   }
 
-  /* --- ドラッグエリアと本体のサイズを小さく調整 --- */
   #draggable-root {
     position: absolute;
     left: 130px;
     top: 150px;
-    width: 90px;  /* 幅を小さく */
-    height: 80px; /* 高さも小さく */
+    width: 90px;
+    height: 80px;
     cursor: grab;
     touch-action: none;
   }
@@ -63,11 +62,11 @@ html_code = """
     transition: transform 0.1s;
   }
 
-  /* --- 大福キャットのデザイン（ミニサイズ版） --- */
+  /* --- 大福キャット --- */
   .cat-wrapper {
     position: relative;
-    width: 90px;  /* 幅縮小 */
-    height: 60px; /* 高さ縮小 */
+    width: 90px;
+    height: 60px;
     margin: 0 auto;
     transform-origin: bottom center;
     transition: transform 0.2s ease-out;
@@ -97,7 +96,7 @@ html_code = """
     z-index: 2;
   }
 
-  /* 耳（サイズ調整） */
+  /* 耳 */
   .cat-ear {
     position: absolute;
     top: -4px;
@@ -111,45 +110,42 @@ html_code = """
   .ear-left { left: 10px; transform: rotate(-25deg); }
   .ear-right { right: 10px; transform: rotate(25deg); }
 
-  /* しっぽ（サイズ調整） */
+  /* しっぽ（基本は右側） */
   .cat-tail {
     position: absolute;
     bottom: 4px;
-    right: -4px;
+    right: -4px; /* デフォルトは右 */
     width: 15px;
     height: 15px;
     background-color: #b0b0b0;
     border-radius: 50%;
     z-index: 1;
+    transition: all 0.2s ease-out; /* しっぽの移動も滑らかに */
   }
 
-  /* --- 顔と目の向きの実装 --- */
+  /* ★ここが追加ポイント！右移動中はしっぽを左にする★ */
+  .walking-right .cat-tail {
+    right: auto;
+    left: -4px;
+  }
+
+  /* 顔 */
   .cat-face {
     position: absolute;
-    top: 58%; /* 少し位置を微調整 */
+    top: 58%;
     left: 50%;
-    /* 基準位置 */
     transform: translate(-50%, -50%);
     z-index: 3;
-    width: 36px; /* 顔パーツ全体の幅を少し狭く */
+    width: 36px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    /* 目の移動を滑らかにする */
     transition: transform 0.2s ease-out;
   }
 
-  /* 左向き：基準から左へ少しずらす */
-  .face-left {
-    transform: translate(calc(-50% - 5px), -50%);
-  }
+  .face-left { transform: translate(calc(-50% - 5px), -50%); }
+  .face-right { transform: translate(calc(-50% + 5px), -50%); }
 
-  /* 右向き：基準から右へ少しずらす */
-  .face-right {
-    transform: translate(calc(-50% + 5px), -50%);
-  }
-
-  /* 目（サイズ調整） */
   .eye {
     width: 8px;
     height: 8px;
@@ -157,7 +153,6 @@ html_code = """
     border-radius: 50%;
   }
 
-  /* 影（サイズ調整） */
   .shadow {
     width: 80px;
     height: 8px;
@@ -191,7 +186,7 @@ html_code = """
 <script>
   const draggable = document.getElementById('draggable-root');
   const catVisual = document.getElementById('cat-visual');
-  const catFace = document.getElementById('cat-face'); // 顔パーツを取得
+  const catFace = document.getElementById('cat-face');
   const room = document.querySelector('.room-container');
   
   let posX = 130, posY = 150;
@@ -243,7 +238,6 @@ html_code = """
         handleIdleBehavior();
       }
 
-      // 向きと傾きの更新関数を呼ぶ
       updateDirection();
 
       draggable.style.left = `${posX}px`;
@@ -266,25 +260,21 @@ html_code = """
     }
   }
 
-  // 向き（目の位置）と体の傾きを更新する関数
   function updateDirection() {
-    // 一旦すべての向きクラスを外す（これで正面に戻る）
     catFace.classList.remove('face-left', 'face-right');
     draggable.classList.remove('walking-left', 'walking-right');
 
-    // 速度がある程度ある場合に向きを変える
     if (Math.abs(velocityX) > 0.5) {
       if (velocityX > 0) {
-        // 右移動
+        // 右へ移動中
         catFace.classList.add('face-right');
         draggable.classList.add('walking-right');
       } else {
-        // 左移動
+        // 左へ移動中
         catFace.classList.add('face-left');
         draggable.classList.add('walking-left');
       }
     }
-    // 速度が小さいときはクラスが外れているので正面向き（待機モーション）になる
   }
 
   function triggerBounceAnimation() {
@@ -337,4 +327,5 @@ html_code = """
 </html>
 """
 
-components.html(html_code, height=550)
+これで、右に進むと「クルッ」としっぽが反対側（左）に行くようになったっち！
+お散歩してる姿がますますリアルになったはずだっちよ～😊🍄
