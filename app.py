@@ -8,8 +8,8 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("Daifuku Athletic Room v17 🍄")
-st.write("画面をタップして、猫じゃらしをシュッと振ってみてね！🪶")
+st.title("Daifuku Athletic Room v18 🍄")
+st.write("壊れない丈夫な猫じゃらしになったっち！ムーンウォークも卒業だっち！🎓")
 
 # HTML/CSS/JSを定義
 html_code = """
@@ -48,7 +48,7 @@ html_code = """
   }
   
   .room-container.wand-mode {
-    cursor: none; /* 棒モード中はカーソルを消す */
+    cursor: none;
   }
 
   /* --- ツールバー --- */
@@ -142,7 +142,8 @@ html_code = """
     50% { transform: scale(1.04, 0.96) translateY(1px); }
   }
 
-  /* 向きのクラス */
+  /* 向きのクラス（重要） */
+  /* デフォルトは正面（CSSで制御せず、JSでクラス付与時に回転させる方式に変更） */
   .walking-left .cat-wrapper { transform: rotate(-5deg); }
   .walking-right .cat-wrapper { transform: rotate(5deg); }
 
@@ -179,7 +180,7 @@ html_code = """
     z-index: 1;
     transition: all 0.2s ease-out;
   }
-  /* 親要素に walking-right がある時、しっぽは左へ */
+  /* 親要素に walking-right がある時、しっぽは左へ（これで右向きに見える） */
   #cat-root.walking-right .cat-tail { 
     right: auto; 
     left: -4px; 
@@ -197,6 +198,8 @@ html_code = """
     align-items: center;
     transition: transform 0.2s ease-out;
   }
+  
+  /* 顔のパーツを動かして向きを表現 */
   .face-left { transform: translate(calc(-50% - 5px), -50%); }
   .face-right { transform: translate(calc(-50% + 5px), -50%); }
 
@@ -270,13 +273,15 @@ html_code = """
     box-sizing: border-box;
   }
 
-  /* --- 猫じゃらし (さらにリニューアル) --- */
-  #wand {
+  /* --- 猫じゃらし (構造変更版) --- */
+  #wand-container {
     position: absolute;
     top: 0; left: 0; pointer-events: none; z-index: 50; display: none;
+    /* コンテナごと回転させる */
+    transform-origin: bottom center; 
   }
   
-  /* 棒：下（カーソル位置）が支点 */
+  /* 棒：コンテナの下端（カーソル位置）から上に伸びる */
   .wand-stick {
     position: absolute;
     bottom: 0; 
@@ -285,17 +290,26 @@ html_code = """
     height: 70px;
     background-color: #8b5a2b;
     border-radius: 2px;
-    transform-origin: bottom center; /* 下を中心に回転 */
   }
   
-  /* 羽：パステルブルー */
+  /* 羽：棒の上端に配置。コンテナ内なので離れない！ */
+  .wand-feather-wrapper {
+    position: absolute;
+    bottom: 65px; 
+    left: 0;
+    width: 0; height: 0;
+    /* 羽だけ揺らすためのラッパー */
+    transform-origin: center bottom;
+  }
+
   .wand-feather {
     position: absolute;
-    bottom: 65px; left: -15px; width: 30px; height: 50px;
+    bottom: 0; 
+    left: -15px; 
+    width: 30px; height: 50px;
     background: linear-gradient(to bottom, #a0d8ef 0%, #e0f0f8 100%);
     border-radius: 50% 50% 20% 20%;
     box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    transform-origin: center bottom;
   }
   
   .wand-feather::before {
@@ -339,9 +353,11 @@ html_code = """
       <div class="shadow"></div>
     </div>
 
-    <div id="wand">
-        <div class="wand-stick" id="wand-stick"></div>
-        <div class="wand-feather" id="wand-feather"></div>
+    <div id="wand-container">
+        <div class="wand-stick"></div>
+        <div class="wand-feather-wrapper" id="wand-feather-wrapper">
+            <div class="wand-feather"></div>
+        </div>
     </div>
 
   </div>
@@ -355,9 +371,9 @@ html_code = """
   const btnFish = document.getElementById('btn-fish');
   const btnBall = document.getElementById('btn-ball');
   const btnWand = document.getElementById('btn-wand');
-  const wandEl = document.getElementById('wand');
-  const wandStick = document.getElementById('wand-stick');
-  const wandFeather = document.getElementById('wand-feather');
+  
+  const wandContainer = document.getElementById('wand-container');
+  const wandFeatherWrapper = document.getElementById('wand-feather-wrapper');
   
   let currentMode = 'fish';
   let posX = 130, posY = 300;
@@ -387,7 +403,9 @@ html_code = """
 
   // 猫じゃらし用変数
   let wandTargetX = 0, wandTargetY = 0;
-  let wandSwingVelocity = 0; // 振る勢い
+  let lastWandTargetX = 0;
+  let wandVX = 0; 
+  let happyCounter = 0;
   let wandAngle = 0;
   let lastHeartTime = 0;
 
@@ -402,20 +420,21 @@ html_code = """
     btnBall.classList.remove('active');
     btnWand.classList.remove('active');
     room.classList.remove('wand-mode');
-    wandEl.style.display = 'none';
+    wandContainer.style.display = 'none';
 
     if (mode === 'fish') btnFish.classList.add('active');
     else if (mode === 'ball') btnBall.classList.add('active');
     else if (mode === 'wand') {
         btnWand.classList.add('active');
         room.classList.add('wand-mode');
-        wandEl.style.display = 'block';
-        wandAngle = 0;
+        wandContainer.style.display = 'block';
+        lastWandTargetX = wandTargetX;
+        wandAngle = 0; 
         wandSwingVelocity = 0;
     }
   }
 
-  // マウス位置追従（棒の位置合わせ）
+  // マウス位置追従
   room.addEventListener('mousemove', (e) => {
       const roomRect = room.getBoundingClientRect();
       wandTargetX = e.clientX - roomRect.left;
@@ -427,7 +446,6 @@ html_code = """
       wandTargetY = e.touches[0].clientY - roomRect.top;
   }, {passive: true});
 
-  // クリック処理（モード分岐）
   room.addEventListener('click', (e) => {
     if (hasDragged) return;
     if (e.target.closest('.draggable') || e.target.closest('.tool-btn')) return;
@@ -437,11 +455,8 @@ html_code = """
     const clickY = e.clientY - roomRect.top;
 
     if (currentMode === 'wand') {
-        // ★クリックで猫じゃらしを振る！★
-        // 左右交互、またはランダムに勢いをつける
         const force = (Math.random() > 0.5 ? 20 : -20) + (Math.random() * 10);
         wandSwingVelocity += force;
-        // 振ったことを視覚化するため、少しだけ位置をずらす演出を入れてもいいが今回は角度のみ
         return; 
     }
 
@@ -480,14 +495,9 @@ html_code = """
     if (currentMode === 'wand') {
         updateWandPhysics(timestamp);
     } else {
-        if (!catVisual.classList.contains('sleepy')) {
-            // 他モードで寝てないならスリープ解除維持
-        }
-        // 他モードへの切り替え時は即座に解除したいのでここで消す
+        if (!catVisual.classList.contains('sleepy')) { }
         if (catVisual.classList.contains('sleepy') && !currentPlatform) {
-             // 床でAI睡眠中以外なら消す（簡易）
-             // AI睡眠と区別がつかないので、操作中（ドラッグ等）でなければ放置でもよいが
-             // 棒から切り替えた直後はおかしいので消す
+             // 棒から切り替えた直後など、不要なsleepyを解除
              // catVisual.classList.remove('sleepy'); 
         }
     }
@@ -513,27 +523,27 @@ html_code = """
     requestAnimationFrame(updatePhysics);
   }
 
-  // ★猫じゃらしの物理とAI★
+  // ★猫じゃらしの物理とAI（改修版）★
   function updateWandPhysics(timestamp) {
-      // 位置更新
-      wandEl.style.left = `${wandTargetX}px`;
-      wandEl.style.top = `${wandTargetY}px`;
+      // 1. 位置更新
+      wandContainer.style.left = `${wandTargetX}px`;
+      wandContainer.style.top = `${wandTargetY}px`;
 
-      // 振る挙動（バネのような動き）
-      // 速度を減衰
-      wandSwingVelocity *= 0.9;
-      // 角度に速度を加算
-      wandAngle += wandSwingVelocity;
-      // 復元力（0度に戻ろうとする力）
-      wandSwingVelocity -= wandAngle * 0.1;
+      // 2. 角度計算
+      wandVX = wandTargetX - lastWandTargetX;
+      lastWandTargetX = wandTargetX;
 
-      // 角度制限
-      if (wandAngle > 80) wandAngle = 80;
-      if (wandAngle < -80) wandAngle = -80;
+      // 棒自体の角度（コンテナを回転）
+      let targetAngle = -wandVX * 5; 
+      if (targetAngle > 70) targetAngle = 70;
+      if (targetAngle < -70) targetAngle = -70;
+      wandAngle += (targetAngle - wandAngle) * 0.2;
+      wandContainer.style.transform = `rotate(${wandAngle}deg)`;
 
-      wandStick.style.transform = `rotate(${wandAngle}deg)`;
-      // 羽は遅れて大きく揺れる
-      wandFeather.style.transform = `rotate(${wandAngle * 0.5}deg)`;
+      // 羽の角度（ラッパーを回転）
+      // 棒の回転に対してさらに遅れて、大きく揺れる
+      let featherAngle = wandAngle * 0.5; 
+      wandFeatherWrapper.style.transform = `rotate(${featherAngle}deg)`;
 
       // --- 大福ちゃんの反応 ---
       const catCX = posX + 45;
@@ -541,22 +551,26 @@ html_code = """
       
       // 羽の先端位置計算
       const featherHeight = 110; 
-      const featherX = wandTargetX - Math.sin(wandAngle * Math.PI/180) * featherHeight;
-      const featherY = wandTargetY - Math.cos(wandAngle * Math.PI/180) * featherHeight;
+      // コンテナ回転＋羽回転の合計角度で位置算出
+      const totalAngle = wandAngle + featherAngle;
+      const featherX = wandTargetX - Math.sin(totalAngle * Math.PI/180) * featherHeight;
+      const featherY = wandTargetY - Math.cos(totalAngle * Math.PI/180) * featherHeight;
       
       const distX = featherX - catCX;
       const distY = featherY - catCY;
 
-      // まったり顔 & 激喜び判定
+      // まったり＆喜び判定
       if (Math.abs(distX) < 50 && Math.abs(distY) < 50) {
           if (!catVisual.classList.contains('sleepy')) catVisual.classList.add('sleepy');
           velocityX *= 0.8;
           
-          // フリフリしている（速度がある）時だけハート
-          if (Math.abs(wandSwingVelocity) > 2) {
-              if (timestamp - lastHeartTime > 300 && Math.random() < 0.2) {
-                  spawnHeart();
-                  lastHeartTime = timestamp;
+          if (Math.abs(wandVX) > 2) { // フリフリ検知
+              happyCounter++;
+              if (happyCounter > 30) {
+                  if (timestamp - lastHeartTime > 300 && Math.random() < 0.2) {
+                      spawnHeart();
+                      lastHeartTime = timestamp;
+                  }
               }
           }
           return; 
@@ -566,50 +580,49 @@ html_code = """
 
       // 追従アクション
       if (Math.abs(distX) > 15) {
-          updateDirectionBySpeed(distX);
-          velocityX += (distX > 0 ? 0.8 : -0.8);
+          // ★ここで向きを確実に更新★
+          // 羽が自分より右にあるなら右を向く
+          if (featherX > catCX) {
+              catFace.classList.add('face-right');
+              catFace.classList.remove('face-left');
+              catRoot.classList.add('walking-right');
+              catRoot.classList.remove('walking-left');
+              velocityX += 0.8;
+          } else {
+              catFace.classList.add('face-left');
+              catFace.classList.remove('face-right');
+              catRoot.classList.add('walking-left');
+              catRoot.classList.remove('walking-right');
+              velocityX -= 0.8;
+          }
+          
           if (velocityX > 5) velocityX = 5; if (velocityX < -5) velocityX = -5;
       } else {
           velocityX *= 0.8;
       }
 
-      // ★段差へのジャンプ判定 (強化)★
-      // 羽が高い位置にある
-      if (distY < -60 && isGrounded && !jumpAnim.active) {
+      // ジャンプ判定
+      if (distY < -80 && isGrounded && !jumpAnim.active) {
           // 羽に近い足場を探す
           let bestPlat = null;
-          let minDiffY = 9999;
-
           platforms.forEach(plat => {
               const pTop = parseFloat(plat.style.top);
               const pLeft = parseFloat(plat.style.left);
               const pWidth = parseFloat(plat.style.width);
-              
-              // 羽の高さに近い足場か？（羽より少し下の足場）
-              // featherY < pTop
               const diffY = pTop - featherY; 
-              if (diffY > 0 && diffY < 150) { // 羽の真下〜150px下にある足場
-                  // X座標も近いか？
+              if (diffY > 0 && diffY < 150) { 
                   const pCenter = pLeft + pWidth/2;
-                  if (Math.abs(pCenter - featherX) < 80) {
-                      bestPlat = plat;
-                  }
+                  if (Math.abs(pCenter - featherX) < 80) bestPlat = plat;
               }
           });
 
-          // 今乗っている足場とは違う足場ならジャンプ！
           if (bestPlat && bestPlat !== currentPlatform) {
-              // 少しランダム性を持たせてジャンプ
-              if (Math.random() < 0.1) {
-                  startPerfectJumpTo(bestPlat);
-              }
+              if (Math.random() < 0.1) startPerfectJumpTo(bestPlat);
           }
-          // まだ床にいて、羽がすごく高いなら、とにかく一番近い足場へ飛ぶ
           else if (!currentPlatform && distY < -150) {
                const targetEl = platforms[Math.floor(Math.random() * platforms.length)];
                if (Math.random() < 0.05) startPerfectJumpTo(targetEl);
           }
-          // 単純な垂直ジャンプ（足場がない場合など）
           else if (Math.abs(distX) < 30 && Math.random() < 0.05) {
               const jumpPower = currentPlatform ? -13 : -10;
               velocityY = jumpPower - Math.random() * 3;
@@ -740,26 +753,7 @@ html_code = """
   function wakeUp() { catVisual.classList.remove('sleepy'); }
   function startPerfectJump() { const roomRect = room.getBoundingClientRect(); const maxX = roomRect.width - 90; let targetEl = null; let tFloorX = 0; let tFloorY = roomRect.height - 80 - 12; if (currentPlatform) { let otherPlats = []; platforms.forEach(p => { if(p !== currentPlatform) otherPlats.push(p); }); if (otherPlats.length > 0 && Math.random() > 0.6) targetEl = otherPlats[Math.floor(Math.random() * otherPlats.length)]; else { targetEl = null; tFloorX = Math.random() * maxX; } } else targetEl = platforms[Math.floor(Math.random() * platforms.length)]; startPerfectJumpTo(targetEl, tFloorX, tFloorY); }
   function startPerfectJumpTo(targetEl, tFloorX, tFloorY) { const roomRect = room.getBoundingClientRect(); if (tFloorY === undefined) tFloorY = roomRect.height - 80 - 12; jumpAnim.active = true; jumpAnim.startTime = performance.now(); jumpAnim.startX = posX; jumpAnim.startY = posY; jumpAnim.targetEl = targetEl; jumpAnim.targetFish = null; jumpAnim.targetFloorX = tFloorX; jumpAnim.targetFloorY = tFloorY; let destY; if (targetEl) destY = parseFloat(targetEl.style.top) - 60; else destY = tFloorY; const highestPoint = Math.min(posY, destY); jumpAnim.peakHeight = 120 + Math.abs(posY - destY) * 0.2; let dist = 0; if(targetEl) { const pLeft = parseFloat(targetEl.style.left); dist = Math.abs((pLeft + parseFloat(targetEl.style.width)/2) - posX); } else dist = Math.abs(tFloorX - posX); jumpAnim.duration = 600 + dist * 1.5; triggerBounceAnimation(); }
-  
-  // ★向き更新処理の修正（重要）★
-  function updateDirectionBySpeed(val) {
-    // まず全てのクラスを消す
-    catFace.classList.remove('face-left', 'face-right');
-    catRoot.classList.remove('walking-left', 'walking-right');
-    
-    if (Math.abs(val) > 0.1) {
-      if (val > 0) {
-        // 右へ移動 -> 右向き
-        catFace.classList.add('face-right');
-        catRoot.classList.add('walking-right');
-      } else {
-        // 左へ移動 -> 左向き
-        catFace.classList.add('face-left');
-        catRoot.classList.add('walking-left');
-      }
-    }
-  }
-  
+  function updateDirectionBySpeed(val) { catFace.classList.remove('face-left', 'face-right'); catRoot.classList.remove('walking-left', 'walking-right'); if (Math.abs(val) > 0.1) { if (val > 0) { catFace.classList.add('face-right'); catRoot.classList.add('walking-right'); } else { catFace.classList.add('face-left'); catRoot.classList.add('walking-left'); } } }
   function triggerBounceAnimation() { catVisual.classList.remove('boing-effect'); void catVisual.offsetWidth; catVisual.classList.add('boing-effect'); }
   function startDrag(e) { hasDragged = false; const target = e.target.closest('.draggable'); if (!target) return; if (isNoticing) { clearTimeout(noticeTimeout); isNoticing = false; const mark = room.querySelector('.notice-mark'); if(mark) mark.remove(); } isDragging = true; activeDragEl = target; activeDragEl.classList.add('grabbing'); if (isHoldingBall) throwBall(); if (activeDragEl === catRoot) { wakeUp(); jumpAnim.active = false; catVisual.classList.remove('boing-effect'); velocityX = 0; velocityY = 0; currentPlatform = null; } const clientX = e.touches ? e.touches[0].clientX : e.clientX; const clientY = e.touches ? e.touches[0].clientY : e.clientY; const elemRect = activeDragEl.getBoundingClientRect(); dragOffsetLeft = clientX - elemRect.left; dragOffsetTop = clientY - elemRect.top; }
   function drag(e) { if (!isDragging || !activeDragEl) return; hasDragged = true; e.preventDefault(); const clientX = e.touches ? e.touches[0].clientX : e.clientX; const clientY = e.touches ? e.touches[0].clientY : e.clientY; const roomRect = room.getBoundingClientRect(); let newLeft = clientX - roomRect.left - dragOffsetLeft; let newTop = clientY - roomRect.top - dragOffsetTop; if (activeDragEl === catRoot) { posX = newLeft; posY = newTop; } activeDragEl.style.left = `${newLeft}px`; activeDragEl.style.top = `${newTop}px`; }
