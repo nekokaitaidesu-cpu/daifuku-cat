@@ -8,8 +8,8 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("Daifuku Athletic Room v9 🍄")
-st.write("左上のアイコンで「ごはん」と「ボール」を切り替えて遊んでね！")
+st.title("Daifuku Athletic Room v10 🍄")
+st.write("ボールを拾って投げたり、ジャンプで取りに行ったり、ますます賢くなったっち！⚽")
 
 # HTML/CSS/JSを定義
 html_code = """
@@ -38,8 +38,10 @@ html_code = """
     width: 350px;
     height: 450px;
     background-color: #fdfaf5;
+    /* ボーダーの厚みを計算に含めるため border-box を指定 */
+    box-sizing: border-box;
     border: 4px solid #d4c4b5;
-    border-bottom: 8px solid #bfab99;
+    border-bottom: 12px solid #bfab99; /* 床を少し厚くして埋まり対策 */
     border-radius: 12px;
     box-shadow: 0 10px 25px rgba(0,0,0,0.1);
     overflow: hidden;
@@ -73,9 +75,8 @@ html_code = """
   
   .tool-btn:active { transform: scale(0.9); }
   
-  /* 選択中のスタイル */
   .tool-btn.active {
-    border-color: #ffcc00; /* 黄色い枠 */
+    border-color: #ffcc00;
     background-color: #fffbe0;
   }
 
@@ -248,7 +249,7 @@ html_code = """
     position: absolute;
     width: 30px;
     height: 30px;
-    background-color: #ff6b6b; /* 赤いボール */
+    background-color: #ff6b6b;
     border-radius: 50%;
     border: 2px solid #e05555;
     box-shadow: inset -5px -5px 10px rgba(0,0,0,0.2);
@@ -258,7 +259,6 @@ html_code = """
     font-size: 14px;
     z-index: 6;
   }
-  /* サッカーボールっぽい模様（簡易） */
   .ball::after {
     content: "⚽";
     font-size: 24px;
@@ -304,7 +304,7 @@ html_code = """
   const btnBall = document.getElementById('btn-ball');
   
   // --- 状態管理 ---
-  let currentMode = 'fish'; // 'fish' or 'ball'
+  let currentMode = 'fish';
   let posX = 130, posY = 300;
   let velocityX = 0, velocityY = 0;
   const gravity = 0.6;
@@ -322,10 +322,15 @@ html_code = """
   let currentPlatform = null;
   
   let currentFish = null;
-  let ballObj = null; // { el, x, y, vx, vy }
+  // ボール情報に保持状態を追加
+  let ballObj = null; // { el, x, y, vx, vy, isHeld }
 
   let isNoticing = false;
   let noticeTimeout = null;
+  
+  // ボール保持用
+  let isHoldingBall = false;
+  let holdStartTime = 0;
 
   let jumpAnim = {
     active: false,
@@ -362,12 +367,10 @@ html_code = """
     const clickY = e.clientY - roomRect.top;
 
     if (currentMode === 'fish') {
-      // お魚モード処理
       if (currentFish || isNoticing || (jumpAnim.active && jumpAnim.targetFish)) return;
       spawnFish(clickX, clickY);
 
     } else if (currentMode === 'ball') {
-      // ボールモード処理：ボールを生成（既にあればリセットして移動）
       spawnBall(clickX, clickY);
     }
   });
@@ -384,8 +387,11 @@ html_code = """
   }
 
   function spawnBall(x, y) {
-    // 既存のボールがあれば削除
     if (ballObj && ballObj.el) ballObj.el.remove();
+    
+    // ボール保持状態をリセット
+    isHoldingBall = false;
+    if(ballObj) ballObj.isHeld = false;
 
     const ballEl = document.createElement('div');
     ballEl.classList.add('ball');
@@ -398,13 +404,11 @@ html_code = """
       x: x - 15,
       y: y - 15,
       vx: 0,
-      vy: 0
+      vy: 0,
+      isHeld: false // 追加
     };
     
-    // 生成時に少し跳ねさせる
     ballObj.vy = -5;
-    
-    // 猫が気づく
     wakeUp();
   }
 
@@ -414,12 +418,12 @@ html_code = """
   }
 
   function updatePhysics(timestamp) {
-    // 1. ボールの物理演算
-    if (ballObj) {
+    // 1. ボールの物理演算 (持たれていない時だけ)
+    if (ballObj && !ballObj.isHeld) {
       updateBallPhysics();
     }
 
-    // 2. 猫のジャンプアニメーション（お魚）
+    // 2. 猫のジャンプアニメーション
     if (jumpAnim.active) {
       handleJumpAnim(timestamp);
       requestAnimationFrame(updatePhysics);
@@ -430,40 +434,49 @@ html_code = """
     if (!isDragging || activeDragEl !== catRoot) {
       updateCatPhysics();
     }
+    
+    // 4. ボール保持中の処理
+    if (isHoldingBall && ballObj && ballObj.isHeld) {
+        // 頭の上に固定
+        ballObj.x = posX + 30;
+        ballObj.y = posY - 20;
+        ballObj.el.style.left = `${ballObj.x}px`;
+        ballObj.el.style.top = `${ballObj.y}px`;
+        
+        // 0.5秒経過したら投げる
+        if (timestamp - holdStartTime > 500) {
+            throwBall();
+        }
+    }
 
     requestAnimationFrame(updatePhysics);
   }
 
   function updateBallPhysics() {
     ballObj.vy += gravity;
-    ballObj.vx *= 0.98; // ボールは転がりやすいように摩擦少なめ
+    ballObj.vx *= 0.98;
     ballObj.vy *= 0.98;
-
     ballObj.x += ballObj.vx;
     ballObj.y += ballObj.vy;
 
     const roomRect = room.getBoundingClientRect();
-    const maxX = roomRect.width - 30; // ボール幅
-    const maxY = roomRect.height - 30;
+    // 床の高さ調整（埋まり対策）
+    const maxY = roomRect.height - 30 - 12; // 高さ - ボール径 - 床ボーダー
 
-    // 床・壁・天井
     if (ballObj.y > maxY) {
       ballObj.y = maxY;
-      ballObj.vy *= -0.7; // 弾む
+      ballObj.vy *= -0.7;
       if(Math.abs(ballObj.vy) < 1) ballObj.vy = 0;
     }
     if (ballObj.x < 0) { ballObj.x = 0; ballObj.vx *= -0.7; }
-    if (ballObj.x > maxX) { ballObj.x = maxX; ballObj.vx *= -0.7; }
+    if (ballObj.x > roomRect.width - 30) { ballObj.x = roomRect.width - 30; ballObj.vx *= -0.7; }
     
-    // 足場との衝突（簡易）
     platforms.forEach(plat => {
       const pLeft = parseFloat(plat.style.left);
       const pTop = parseFloat(plat.style.top);
       const pWidth = parseFloat(plat.style.width);
-      
       const ballCX = ballObj.x + 15;
       const ballCY = ballObj.y + 30;
-
       if (ballCX >= pLeft && ballCX <= pLeft + pWidth) {
          if (ballCY >= pTop - 5 && ballCY <= pTop + 15 && ballObj.vy > 0) {
             ballObj.y = pTop - 30;
@@ -471,7 +484,6 @@ html_code = """
          }
       }
     });
-
     ballObj.el.style.left = `${ballObj.x}px`;
     ballObj.el.style.top = `${ballObj.y}px`;
   }
@@ -484,8 +496,8 @@ html_code = """
       posY += velocityY;
 
       const roomRect = room.getBoundingClientRect();
-      const maxX = roomRect.width - 90;
-      const maxY = roomRect.height - 80;
+      // 床の高さ調整（埋まり対策）
+      const maxY = roomRect.height - 80 - 12; // 高さ - 猫高さ - 床ボーダー
 
       let landedThisFrame = false;
       if (velocityY >= 0) {
@@ -518,35 +530,38 @@ html_code = """
       isGrounded = landedThisFrame;
       if (posY < 0) { posY = 0; velocityY *= bounce; }
       if (posX < 0) { posX = 0; velocityX *= bounce; }
-      if (posX > maxX) { posX = maxX; velocityX *= bounce; }
+      if (posX > roomRect.width - 90) { posX = roomRect.width - 90; velocityX *= bounce; }
 
-      // --- ボールとの衝突判定（キック！） ---
-      if (ballObj) {
+      // --- ボールとの衝突判定 ---
+      if (ballObj && !isHoldingBall && !ballObj.isHeld) {
          const catCX = posX + 45;
          const catCY = posY + 40;
          const ballCX = ballObj.x + 15;
          const ballCY = ballObj.y + 15;
-         
          const dx = ballCX - catCX;
          const dy = ballCY - catCY;
          const dist = Math.sqrt(dx*dx + dy*dy);
          
-         // 接触判定 (半径の和 + マージン)
          if (dist < 55) {
-             // 衝突！
-             // 猫の速度を加算
-             const kickPower = 0.2;
-             ballObj.vx += dx * kickPower + velocityX * 1.5;
-             ballObj.vy += dy * kickPower + velocityY * 1.5 - 2; // 少し浮かせる
-             
-             // 猫も少し反動
-             velocityX -= dx * 0.05;
+             // ★床にいるなら「拾う」アクション★
+             if (isGrounded && !jumpAnim.active) {
+                 isHoldingBall = true;
+                 ballObj.isHeld = true;
+                 holdStartTime = performance.now();
+                 velocityX = 0; velocityY = 0; // 止まる
+                 updateDirectionBySpeed(0); // 正面を向く
+             } else {
+                 // 空中ならキック（既存の処理）
+                 const kickPower = 0.2;
+                 ballObj.vx += dx * kickPower + velocityX * 1.5;
+                 ballObj.vy += dy * kickPower + velocityY * 1.5 - 2;
+                 velocityX -= dx * 0.05;
+             }
          }
       }
 
       // 自動行動
-      if (isGrounded && !isDragging && !isNoticing) {
-        // ★ボールモードならボールを追いかける★
+      if (isGrounded && !isDragging && !isNoticing && !isHoldingBall) {
         if (currentMode === 'ball' && ballObj) {
              chaseBallAI();
         } else {
@@ -554,32 +569,59 @@ html_code = """
         }
       }
 
-      if (!catVisual.classList.contains('sleepy')) { updateDirectionBySpeed(velocityX); }
+      if (!catVisual.classList.contains('sleepy') && !isHoldingBall) { updateDirectionBySpeed(velocityX); }
       catRoot.style.left = `${posX}px`; catRoot.style.top = `${posY}px`;
+  }
+  
+  // ★ボールを投げる処理★
+  function throwBall() {
+      isHoldingBall = false;
+      ballObj.isHeld = false;
+      // ランダムな上方向へ投げる
+      ballObj.vx = (Math.random() - 0.5) * 12; // 横方向ランダム
+      ballObj.vy = -10 - Math.random() * 5;   // 上方向ランダム（強め）
+      
+      // 投げた反動で少し跳ねる
+      velocityY = -3;
+      triggerBounceAnimation();
   }
 
   function chaseBallAI() {
-      // ボールの方へ移動
+      // ボールがどの足場にあるかチェック
+      let ballOnPlatform = null;
+      platforms.forEach(plat => {
+          const pTop = parseFloat(plat.style.top);
+          // ボールの底が足場の上面付近にあるか
+          if (Math.abs((ballObj.y + 30) - pTop) < 20 && ballObj.vy === 0) {
+              ballOnPlatform = plat;
+          }
+      });
+
+      if (ballOnPlatform) {
+          // ★ボールが足場にある場合★
+          if (currentPlatform === ballOnPlatform) {
+              // 同じ足場なら普通に追いかける
+              normalChase();
+          } else {
+              // 違う場所なら、その足場へジャンプ！
+              startPerfectJumpTo(ballOnPlatform);
+          }
+      } else {
+          // ボールが床（または空中）にある場合
+          if (isGrounded) {
+               normalChase();
+          }
+      }
+  }
+  
+  function normalChase() {
       const ballCX = ballObj.x + 15;
       const catCX = posX + 45;
       const diffX = ballCX - catCX;
-      
       if (Math.abs(diffX) > 10) {
-          // 走る
           velocityX += (diffX > 0 ? 0.5 : -0.5);
-          // 速度制限
           if (velocityX > 4) velocityX = 4;
           if (velocityX < -4) velocityX = -4;
-      }
-      
-      // ボールが高いところにある場合、ジャンプ
-      if (ballObj.y < posY - 50 && Math.random() < 0.05) {
-          velocityY = -8;
-      }
-      
-      // 時々休憩（ランダム停止）
-      if (Math.random() < 0.01) {
-          velocityX = 0;
       }
   }
 
@@ -678,12 +720,20 @@ html_code = """
 
   function startPerfectJump() {
     const roomRect = room.getBoundingClientRect(); const maxX = roomRect.width - 90;
-    let targetEl = null; let tFloorX = 0; let tFloorY = roomRect.height - 80;
+    let targetEl = null; let tFloorX = 0; let tFloorY = roomRect.height - 80 - 12; // 床高さ修正
     if (currentPlatform) {
        let otherPlats = []; platforms.forEach(p => { if(p !== currentPlatform) otherPlats.push(p); });
        if (otherPlats.length > 0 && Math.random() > 0.6) targetEl = otherPlats[Math.floor(Math.random() * otherPlats.length)];
        else { targetEl = null; tFloorX = Math.random() * maxX; }
     } else targetEl = platforms[Math.floor(Math.random() * platforms.length)];
+    startPerfectJumpTo(targetEl, tFloorX, tFloorY);
+  }
+  
+  // ★指定したターゲットへジャンプする関数（汎用化）★
+  function startPerfectJumpTo(targetEl, tFloorX, tFloorY) {
+    const roomRect = room.getBoundingClientRect();
+    if (tFloorY === undefined) tFloorY = roomRect.height - 80 - 12;
+
     jumpAnim.active = true; jumpAnim.startTime = performance.now(); jumpAnim.startX = posX; jumpAnim.startY = posY;
     jumpAnim.targetEl = targetEl; jumpAnim.targetFish = null; jumpAnim.targetFloorX = tFloorX; jumpAnim.targetFloorY = tFloorY;
     let destY; if (targetEl) destY = parseFloat(targetEl.style.top) - 60; else destY = tFloorY;
@@ -702,6 +752,10 @@ html_code = """
     hasDragged = false; const target = e.target.closest('.draggable'); if (!target) return;
     if (isNoticing) { clearTimeout(noticeTimeout); isNoticing = false; const mark = room.querySelector('.notice-mark'); if(mark) mark.remove(); }
     isDragging = true; activeDragEl = target; activeDragEl.classList.add('grabbing');
+    
+    // ドラッグされたらボール保持も解除
+    if (isHoldingBall) throwBall();
+
     if (activeDragEl === catRoot) { wakeUp(); jumpAnim.active = false; catVisual.classList.remove('boing-effect'); velocityX = 0; velocityY = 0; currentPlatform = null; }
     const clientX = e.touches ? e.touches[0].clientX : e.clientX; const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     const elemRect = activeDragEl.getBoundingClientRect(); dragOffsetLeft = clientX - elemRect.left; dragOffsetTop = clientY - elemRect.top;
