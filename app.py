@@ -8,8 +8,8 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("Daifuku Athletic Room v6 🍄")
-st.write("画面の余白をクリックして、お魚をあげてみてね！🐟")
+st.title("Daifuku Athletic Room v7 🍄")
+st.write("お魚を見つけると「！」と反応するようになったっち！")
 
 # HTML/CSS/JSを定義
 html_code = """
@@ -41,7 +41,7 @@ html_code = """
     border-radius: 12px;
     box-shadow: 0 10px 25px rgba(0,0,0,0.1);
     overflow: hidden;
-    cursor: pointer; /* クリックできることを示す */
+    cursor: pointer;
   }
 
   .draggable {
@@ -86,10 +86,7 @@ html_code = """
     100% { transform: scale(1, 1); }
   }
 
-  /* 寝息モーション */
-  .sleepy {
-    animation: sleep-breath 3s infinite ease-in-out !important;
-  }
+  .sleepy { animation: sleep-breath 3s infinite ease-in-out !important; }
   @keyframes sleep-breath {
     0%, 100% { transform: scale(1, 1); }
     50% { transform: scale(1.04, 0.96) translateY(1px); }
@@ -196,7 +193,7 @@ html_code = """
     50% { transform: translateY(-5px); }
   }
 
-  /* --- ハート（食べた時のエフェクト） --- */
+  /* --- ハート --- */
   .heart {
     position: absolute;
     font-size: 20px;
@@ -208,6 +205,22 @@ html_code = """
   @keyframes float-heart {
     0% { transform: translateY(0) scale(0.5); opacity: 1; }
     100% { transform: translateY(-30px) scale(1.5); opacity: 0; }
+  }
+
+  /* ★追加：気づいた時の「！」マーク★ */
+  .notice-mark {
+    position: absolute;
+    font-size: 24px;
+    color: #ff4500; /* オレンジっぽい赤 */
+    font-weight: bold;
+    pointer-events: none;
+    animation: pop-notice 0.6s forwards ease-out;
+    z-index: 20;
+  }
+  @keyframes pop-notice {
+    0% { transform: translateY(0) scale(0); opacity: 0; }
+    30% { transform: translateY(-15px) scale(1.2); opacity: 1; }
+    100% { transform: translateY(-20px) scale(1.0); opacity: 1; }
   }
 
 </style>
@@ -248,7 +261,7 @@ html_code = """
   const bounce = -0.3;
 
   let isDragging = false;
-  let hasDragged = false; // ドラッグしたかどうかの判定用
+  let hasDragged = false;
   let activeDragEl = null;
   let dragStartX, dragStartY;
   let dragOffsetLeft, dragOffsetTop;
@@ -257,7 +270,11 @@ html_code = """
   let isGrounded = false;
   let currentPlatform = null;
   
-  let currentFish = null; // 現在のお魚要素
+  let currentFish = null;
+  
+  // ★追加：気づきモーション中のフラグとタイマー
+  let isNoticing = false;
+  let noticeTimeout = null;
 
   let jumpAnim = {
     active: false,
@@ -268,20 +285,19 @@ html_code = """
     targetEl: null,
     targetFloorX: 0,
     targetFloorY: 0,
-    targetFish: null, // お魚ターゲット用
+    targetFish: null,
     peakHeight: 0
   };
 
-  // --- お魚クリック処理 ---
   room.addEventListener('click', (e) => {
-    // ドラッグ操作だった場合や、猫・足場をクリックした場合は無視
     if (hasDragged) return;
     if (e.target.closest('.draggable')) return;
+    
+    // 気づきモーション中はお魚を出さない（連打防止）
+    if (isNoticing) return;
 
-    // 既存のお魚があれば消す
     if (currentFish) currentFish.remove();
 
-    // クリック位置にお魚を出現させる
     const roomRect = room.getBoundingClientRect();
     const clickX = e.clientX - roomRect.left;
     const clickY = e.clientY - roomRect.top;
@@ -293,47 +309,80 @@ html_code = """
     const fish = document.createElement('div');
     fish.classList.add('fish');
     fish.textContent = '🐟';
-    fish.style.left = (x - 12) + 'px'; // 中心合わせ
+    fish.style.left = (x - 12) + 'px';
     fish.style.top = (y - 12) + 'px';
     room.appendChild(fish);
     currentFish = fish;
 
-    // 猫を起こして、お魚へジャンプさせる！
-    wakeUp();
-    startJumpToFish(x, y);
+    // いきなりジャンプせず、「気づく」シーケンスを開始
+    startNoticeSequence(x, y);
+  }
+
+  // ★新関数：「気づく」シーケンス
+  function startNoticeSequence(fishX, fishY) {
+      isNoticing = true;
+      wakeUp(); // まず起きる
+      velocityX = 0; velocityY = 0; // 止まる
+
+      // お魚の方を向く
+      const direction = fishX - (posX + 45);
+      updateDirectionBySpeed(direction);
+
+      // 「！」マークを出す
+      spawnNoticeMark();
+
+      // 少し待ってからジャンプ
+      noticeTimeout = setTimeout(() => {
+          startJumpToFish(fishX, fishY);
+          isNoticing = false; // 気づき終了
+          // マークを消す
+          const mark = room.querySelector('.notice-mark');
+          if(mark) mark.remove();
+      }, 600); // 600ms待つ
+  }
+
+  function spawnNoticeMark() {
+      const mark = document.createElement('div');
+      mark.classList.add('notice-mark');
+      mark.textContent = '!';
+      // 猫の頭の上に出す
+      mark.style.left = (posX + 40) + 'px';
+      mark.style.top = (posY - 30) + 'px';
+      room.appendChild(mark);
   }
 
   function startJumpToFish(targetX, targetY) {
+    // お魚がまだあるか確認（待ってる間に消えた場合など）
+    if (!currentFish) {
+        isNoticing = false;
+        return;
+    }
     jumpAnim.active = true;
     jumpAnim.startTime = performance.now();
     jumpAnim.startX = posX;
     jumpAnim.startY = posY;
     jumpAnim.targetEl = null;
-    jumpAnim.targetFish = { x: targetX - 45, y: targetY - 30 }; // 猫の中心(45, 60の半分)を合わせる
+    jumpAnim.targetFish = { x: targetX - 45, y: targetY - 30 };
     
-    // 現在地と目標の距離・高さ計算
     const destY = jumpAnim.targetFish.y;
-    const highestPoint = Math.min(posY, destY);
-    jumpAnim.peakHeight = 150 + Math.abs(posY - destY) * 0.2; // 少し高く飛ぶ
+    jumpAnim.peakHeight = 150 + Math.abs(posY - destY) * 0.2;
 
     const dist = Math.abs(jumpAnim.targetFish.x - posX);
-    jumpAnim.duration = 500 + dist * 1.2; // おやつは早めに食べに行く！
+    jumpAnim.duration = 500 + dist * 1.2;
 
     triggerBounceAnimation();
   }
 
-  // --- 物理ループ ---
   function startPhysicsLoop() {
     requestAnimationFrame(updatePhysics);
   }
 
   function updatePhysics(timestamp) {
     if (jumpAnim.active) {
+      // (省略: 前と同じジャンプ処理)
       const elapsed = timestamp - jumpAnim.startTime;
       const progress = Math.min(elapsed / jumpAnim.duration, 1.0);
-      
       let targetX, targetY;
-      
       if (jumpAnim.targetFish) {
         targetX = jumpAnim.targetFish.x;
         targetY = jumpAnim.targetFish.y;
@@ -347,36 +396,26 @@ html_code = """
         targetX = jumpAnim.targetFloorX;
         targetY = jumpAnim.targetFloorY;
       }
-
       const currentX = jumpAnim.startX + (targetX - jumpAnim.startX) * progress;
       const heightOffset = 4 * jumpAnim.peakHeight * progress * (1 - progress);
       const baseY = jumpAnim.startY + (targetY - jumpAnim.startY) * progress;
       const currentY = baseY - heightOffset;
-
       posX = currentX;
       posY = currentY;
       catRoot.style.left = `${posX}px`;
       catRoot.style.top = `${posY}px`;
-
       const direction = targetX - jumpAnim.startX;
       updateDirectionBySpeed(direction);
-
       if (progress >= 1.0) {
         jumpAnim.active = false;
-        
-        // ★お魚を食べた時の処理★
         if (jumpAnim.targetFish) {
             eatFish();
-            // 空中かもしれないので、着地フラグは立てずに物理演算に戻す（落下させる）
             isGrounded = false;
             currentPlatform = null;
-            velocityX = 0;
-            velocityY = 0; // 一瞬止まる
+            velocityX = 0; velocityY = 0;
             jumpAnim.targetFish = null;
         } else {
-            // 通常の着地
-            velocityX = 0; 
-            velocityY = 0;
+            velocityX = 0; velocityY = 0;
             if (jumpAnim.targetEl) {
               currentPlatform = jumpAnim.targetEl;
             } else {
@@ -447,7 +486,8 @@ html_code = """
       if (posX < 0) { posX = 0; velocityX *= bounce; }
       if (posX > maxX) { posX = maxX; velocityX *= bounce; }
 
-      if (isGrounded && !isDragging) {
+      // 自動行動（気づきモーション中は実行しない）
+      if (isGrounded && !isDragging && !isNoticing) {
         handleIdleBehavior();
       }
 
@@ -466,11 +506,7 @@ html_code = """
       if (currentFish) {
           currentFish.remove();
           currentFish = null;
-          
-          // ハートを出す
           spawnHeart();
-          
-          // ちょっと跳ねる
           triggerBounceAnimation();
       }
   }
@@ -479,37 +515,28 @@ html_code = """
       const heart = document.createElement('div');
       heart.classList.add('heart');
       heart.textContent = '💕';
-      // 猫の頭の上あたりに出す
       heart.style.left = (posX + 35) + 'px';
       heart.style.top = (posY - 20) + 'px';
       room.appendChild(heart);
-      
-      // アニメーション終わったら消す
       setTimeout(() => heart.remove(), 1000);
   }
 
   function handleIdleBehavior() {
+    // (省略: 前と同じ自動行動)
     idleTimer--;
     if (idleTimer < 0) {
       wakeUp();
-
       if (currentPlatform) {
-          if (Math.random() < 0.6) {
-              startSleeping();
-          } else {
-              startPerfectJump();
-          }
+          if (Math.random() < 0.6) { startSleeping(); } else { startPerfectJump(); }
       } else {
           const action = Math.floor(Math.random() * 5); 
           switch(action) {
             case 0: velocityX = -3; if(Math.random()>0.7) velocityY = -3; break;
             case 1: velocityX = 3; if(Math.random()>0.7) velocityY = -3; break;
             case 2: break;
-            case 3: 
-            case 4: startPerfectJump(); break;
+            case 3: case 4: startPerfectJump(); break;
           }
       }
-      
       if (catVisual.classList.contains('sleepy')) {
           idleTimer = 180 + Math.random() * 180;
       } else {
@@ -522,8 +549,7 @@ html_code = """
       catVisual.classList.add('sleepy');
       catFace.classList.remove('face-left', 'face-right');
       catRoot.classList.remove('walking-left', 'walking-right');
-      velocityX = 0;
-      velocityY = 0;
+      velocityX = 0; velocityY = 0;
   }
 
   function wakeUp() {
@@ -531,67 +557,30 @@ html_code = """
   }
 
   function startPerfectJump() {
+    // (省略: 前と同じジャンプ)
     const roomRect = room.getBoundingClientRect();
     const maxX = roomRect.width - 90;
-    
-    let targetEl = null;
-    let tFloorX = 0;
-    let tFloorY = roomRect.height - 80;
-
+    let targetEl = null; let tFloorX = 0; let tFloorY = roomRect.height - 80;
     if (currentPlatform) {
-       let otherPlats = [];
-       platforms.forEach(p => { if(p !== currentPlatform) otherPlats.push(p); });
-       if (otherPlats.length > 0 && Math.random() > 0.6) {
-          targetEl = otherPlats[Math.floor(Math.random() * otherPlats.length)];
-       } else {
-          targetEl = null;
-          tFloorX = Math.random() * maxX;
-       }
-    } else {
-       targetEl = platforms[Math.floor(Math.random() * platforms.length)];
-    }
-
-    jumpAnim.active = true;
-    jumpAnim.startTime = performance.now();
-    jumpAnim.startX = posX;
-    jumpAnim.startY = posY;
-    jumpAnim.targetEl = targetEl;
-    jumpAnim.targetFish = null; // お魚ターゲット解除
-    jumpAnim.targetFloorX = tFloorX;
-    jumpAnim.targetFloorY = tFloorY;
-
-    let destY;
-    if (targetEl) {
-       destY = parseFloat(targetEl.style.top) - 60;
-    } else {
-       destY = tFloorY;
-    }
-
-    const highestPoint = Math.min(posY, destY);
-    jumpAnim.peakHeight = 120 + Math.abs(posY - destY) * 0.2;
-
-    let dist = 0;
-    if(targetEl) {
-        const pLeft = parseFloat(targetEl.style.left);
-        dist = Math.abs((pLeft + parseFloat(targetEl.style.width)/2) - posX);
-    } else {
-        dist = Math.abs(tFloorX - posX);
-    }
-    jumpAnim.duration = 600 + dist * 1.5;
-    triggerBounceAnimation();
+       let otherPlats = []; platforms.forEach(p => { if(p !== currentPlatform) otherPlats.push(p); });
+       if (otherPlats.length > 0 && Math.random() > 0.6) { targetEl = otherPlats[Math.floor(Math.random() * otherPlats.length)];
+       } else { targetEl = null; tFloorX = Math.random() * maxX; }
+    } else { targetEl = platforms[Math.floor(Math.random() * platforms.length)]; }
+    jumpAnim.active = true; jumpAnim.startTime = performance.now(); jumpAnim.startX = posX; jumpAnim.startY = posY;
+    jumpAnim.targetEl = targetEl; jumpAnim.targetFish = null; jumpAnim.targetFloorX = tFloorX; jumpAnim.targetFloorY = tFloorY;
+    let destY; if (targetEl) { destY = parseFloat(targetEl.style.top) - 60; } else { destY = tFloorY; }
+    const highestPoint = Math.min(posY, destY); jumpAnim.peakHeight = 120 + Math.abs(posY - destY) * 0.2;
+    let dist = 0; if(targetEl) { const pLeft = parseFloat(targetEl.style.left); dist = Math.abs((pLeft + parseFloat(targetEl.style.width)/2) - posX);
+    } else { dist = Math.abs(tFloorX - posX); }
+    jumpAnim.duration = 600 + dist * 1.5; triggerBounceAnimation();
   }
 
   function updateDirectionBySpeed(val) {
     catFace.classList.remove('face-left', 'face-right');
     catRoot.classList.remove('walking-left', 'walking-right');
     if (Math.abs(val) > 0.1) {
-      if (val > 0) {
-        catFace.classList.add('face-right');
-        catRoot.classList.add('walking-right');
-      } else {
-        catFace.classList.add('face-left');
-        catRoot.classList.add('walking-left');
-      }
+      if (val > 0) { catFace.classList.add('face-right'); catRoot.classList.add('walking-right');
+      } else { catFace.classList.add('face-left'); catRoot.classList.add('walking-left'); }
     }
   }
 
@@ -602,9 +591,18 @@ html_code = """
   }
 
   function startDrag(e) {
-    hasDragged = false; // ドラッグ開始リセット
+    hasDragged = false;
     const target = e.target.closest('.draggable');
     if (!target) return;
+    
+    // ★ドラッグされたら気づきモーションもキャンセル
+    if (isNoticing) {
+        clearTimeout(noticeTimeout);
+        isNoticing = false;
+        const mark = room.querySelector('.notice-mark');
+        if(mark) mark.remove();
+    }
+
     isDragging = true;
     activeDragEl = target;
     activeDragEl.classList.add('grabbing');
@@ -620,33 +618,26 @@ html_code = """
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     const elemRect = activeDragEl.getBoundingClientRect();
-
     dragOffsetLeft = clientX - elemRect.left;
     dragOffsetTop = clientY - elemRect.top;
   }
 
   function drag(e) {
     if (!isDragging || !activeDragEl) return;
-    hasDragged = true; // 動かしたのでドラッグとみなす
+    hasDragged = true;
     e.preventDefault();
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     const roomRect = room.getBoundingClientRect();
     let newLeft = clientX - roomRect.left - dragOffsetLeft;
     let newTop = clientY - roomRect.top - dragOffsetTop;
-    if (activeDragEl === catRoot) {
-      posX = newLeft;
-      posY = newTop;
-    }
-    activeDragEl.style.left = `${newLeft}px`;
-    activeDragEl.style.top = `${newTop}px`;
+    if (activeDragEl === catRoot) { posX = newLeft; posY = newTop; }
+    activeDragEl.style.left = `${newLeft}px`; activeDragEl.style.top = `${newTop}px`;
   }
 
   function endDrag() {
     if (activeDragEl) activeDragEl.classList.remove('grabbing');
-    isDragging = false;
-    activeDragEl = null;
-    idleTimer = 60; 
+    isDragging = false; activeDragEl = null; idleTimer = 60; 
   }
 
   room.addEventListener('mousedown', startDrag);
