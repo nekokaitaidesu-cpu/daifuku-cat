@@ -1,204 +1,132 @@
 import streamlit as st
+import streamlit.components.v1 as components
 
-# ページ設定
-st.set_page_config(page_title="Daifuku Cat Animation Final", page_icon="🍄")
+# ページの設定
+st.set_page_config(
+    page_title="ふわふわアニメーション",
+    page_icon="🍄",
+    layout="centered"
+)
 
-st.title("もちもちだいふく猫だっち（ファイナル修正版） 🍄")
-st.write("赤ペンの指示に全集中して、コードで再現してみたっち！🔥")
+st.title("CSS Animation Demo 🍄")
+st.write("CSSだけで作ったふわふわアニメーションだっち！")
 
-# HTML/CSSコード
+# HTMLとCSSを定義
 html_code = """
 <!DOCTYPE html>
 <html lang="ja">
 <head>
+<meta charset="UTF-8">
 <style>
-  /* 全体のコンテナ */
-  .container {
+  /* Streamlitのコンポーネント内で綺麗に表示するための調整 */
+  body {
     display: flex;
-    justify_content: center;
+    justify-content: center;
     align-items: center;
-    height: 400px;
-    background-color: #f0f2f6; /* 背景色 */
-    overflow: hidden;
+    height: 100vh; /* iframeの高さに合わせる */
+    margin: 0;
+    background-color: transparent; /* 背景はStreamlitに合わせる */
+    font-family: sans-serif;
+    overflow: hidden; /* スクロールバーを消す */
   }
 
-  /* 猫の全体ラッパー */
+  .container { text-align: center; }
+
+  /* --- ここから下はさっきと同じCSS --- */
+  
   .cat-wrapper {
     position: relative;
-    width: 320px;
-    height: 200px;
+    width: 100px;
+    height: 100px;
+    margin: 0 auto;
+    animation: bounce-float 2s infinite ease-in-out;
   }
 
-  /* 体（だいふく部分） */
-  .body {
-    position: absolute;
-    width: 300px;
-    height: 190px;
-    background-color: #fff;
-    border: 4px solid #333;
-    border-radius: 50% 50% 45% 45% / 60% 60% 40% 40%;
-    z-index: 10;
-    top: 0;
-    left: 0;
+  .cat-body {
+    width: 100%;
+    height: 100%;
+    background-color: #b0b0b0; /* 猫の色 */
+    border-radius: 50% 50% 45% 45%;
+    position: relative;
+    z-index: 2;
   }
 
-  /* 耳 (修正: より尖らせて、位置を調整) */
-  .ear {
+  .cat-ear {
     position: absolute;
-    width: 45px;
-    height: 50px;
-    background-color: #fff;
-    border: 4px solid #333;
-    border-radius: 5px 30px 0 0; /* より尖らせる */
-    z-index: 5;
+    top: -10px;
+    width: 0;
+    height: 0;
+    border-left: 20px solid transparent;
+    border-right: 20px solid transparent;
+    border-bottom: 40px solid #b0b0b0;
+    z-index: 1;
   }
-  .ear.left {
-    top: -5px; /* 位置調整 */
-    left: 45px; /* 位置調整 */
-    transform: rotate(-25deg);
-  }
-  .ear.right {
-    top: -10px; /* 位置調整 */
-    left: 115px; /* 位置調整 */
-    transform: rotate(15deg);
-  }
-  /* 耳の内側の線を隠すためのカバー */
-  .ear-cover {
+  .ear-left { left: 5px; transform: rotate(-15deg); }
+  .ear-right { right: 5px; transform: rotate(15deg); }
+
+  .cat-face {
     position: absolute;
-    width: 40px;
-    height: 15px;
-    background-color: #fff;
-    z-index: 11;
-    top: 35px;
-    left: 2px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 3;
+    width: 60px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
   }
 
-  /* 顔のパーツ (修正: 全体的にかなり下に移動) */
-  .face {
-    position: absolute;
-    z-index: 20;
-    top: 110px; /* かなり下に移動 */
-    left: 55px; /* 中央寄りに */
-  }
-
-  /* 目 */
   .eye {
-    position: absolute;
-    width: 18px;
-    height: 8px;
-    border-top: 4px solid #333;
-    border-radius: 50%;
-    top: 0;
-  }
-  .eye.left { left: 0; }
-  .eye.right { left: 75px; }
-
-  /* ほっぺ (修正: 位置を調整) */
-  .cheek {
-    position: absolute;
-    width: 22px;
+    width: 12px;
     height: 12px;
-    background-color: #ffcccc;
+    background-color: white;
     border-radius: 50%;
-    opacity: 0.6;
-    top: 25px; /* 少し下に */
   }
-  .cheek.left { left: -15px; }
-  .cheek.right { left: 90px; }
 
-  /* 口 (修正: 位置を調整、少し小さく) */
-  .mouth {
-    position: absolute;
-    width: 18px;
-    height: 8px;
-    border-bottom: 4px solid #333;
-    border-right: 4px solid #333;
-    border-radius: 0 0 8px 0;
-    transform: rotate(45deg);
-    top: 18px; /* 位置調整 */
-    left: 38px;
+  .shadow {
+    width: 80px;
+    height: 10px;
+    background-color: rgba(0,0,0,0.1);
+    border-radius: 50%;
+    margin: 20px auto 0;
+    animation: shadow-scale 2s infinite ease-in-out;
   }
-  .mouth::after {
-    content: '';
-    position: absolute;
-    width: 18px;
-    height: 8px;
-    border-bottom: 4px solid #333;
-    border-left: 4px solid #333;
-    border-radius: 0 0 0 8px;
-    transform: rotate(90deg) translate(-12px, -12px); 
-    top: 0;
-    left: 0;
+
+  @keyframes bounce-float {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-20px) scale(1.05, 0.95); }
+  }
+
+  @keyframes shadow-scale {
+    0%, 100% { transform: scale(1); opacity: 0.3; }
+    50% { transform: scale(0.8); opacity: 0.1; }
   }
   
-  /* しっぽ (修正: 元の丸い形に戻す) */
-  .tail {
-    position: absolute;
-    width: 90px;
-    height: 70px;
-    background-color: #fff;
-    border: 4px solid #333;
-    border-radius: 50%;
-    top: 65px;
-    right: -35px;
-    z-index: 1;
-    transform-origin: 0% 50%;
-    animation: wag 1s infinite alternate ease-in-out;
+  p {
+    color: #666;
+    margin-top: 20px;
+    font-size: 14px;
   }
-
-  /* ハート */
-  .heart {
-    position: absolute;
-    color: #333;
-    font-size: 20px;
-    top: 40px;
-    right: -30px;
-    z-index: 20;
-    animation: float 2s infinite ease-in-out;
-    font-weight: bold;
-  }
-
-  /* アニメーション定義 */
-  @keyframes wag {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(20deg); }
-  }
-
-  @keyframes float {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-8px); }
-  }
-
 </style>
 </head>
 <body>
-
-<div class="container">
-  <div class="cat-wrapper">
-    <div class="ear left"><div class="ear-cover"></div></div>
-    <div class="ear right"><div class="ear-cover"></div></div>
-    
-    <div class="tail"></div>
-    
-    <div class="body"></div>
-    
-    <div class="face">
-      <div class="eye left"></div>
-      <div class="eye right"></div>
-      <div class="cheek left"></div>
-      <div class="cheek right"></div>
-      <div class="mouth"></div>
+  <div class="container">
+    <div class="cat-wrapper">
+      <div class="cat-ear ear-left"></div>
+      <div class="cat-ear ear-right"></div>
+      <div class="cat-body">
+        <div class="cat-face">
+          <div class="eye"></div>
+          <div class="eye"></div>
+        </div>
+      </div>
     </div>
-
-    <div class="heart">♡</div>
+    <div class="shadow"></div>
+    <p>yui. style animation</p>
   </div>
-</div>
-
 </body>
 </html>
 """
 
-# HTMLを描画
-st.components.v1.html(html_code, height=450)
-
-st.caption("CSS Animation by Streamlit")
+# StreamlitでHTMLを表示（高さは適宜調整）
+components.html(html_code, height=350)
