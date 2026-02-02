@@ -8,8 +8,8 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("Daifuku Athletic Room v11 🍄")
-st.write("ボール遊びの達人になったっち！ぴょんぴょん追いかけるよ！⚽")
+st.title("Daifuku Athletic Room v12 🍄")
+st.write("足場の上からも、狙いを定めてジャンプで獲物を捕らえるっち！🔴")
 
 # HTML/CSS/JSを定義
 html_code = """
@@ -63,13 +63,14 @@ html_code = """
     background-color: white;
     border: 3px solid #ddd;
     border-radius: 8px;
-    font-size: 20px;
+    font-size: 24px; /* お魚の絵文字サイズ */
     display: flex;
     justify-content: center;
     align-items: center;
     cursor: pointer;
     transition: transform 0.1s;
     box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    padding: 0;
   }
   
   .tool-btn:active { transform: scale(0.9); }
@@ -77,6 +78,17 @@ html_code = """
   .tool-btn.active {
     border-color: #ffcc00;
     background-color: #fffbe0;
+  }
+
+  /* ツールバーの赤い丸アイコン */
+  .red-dot-icon {
+    display: block;
+    width: 24px;
+    height: 24px;
+    background-color: #ff6b6b;
+    border-radius: 50%;
+    border: 2px solid #e05555;
+    box-sizing: border-box;
   }
 
   .draggable {
@@ -243,7 +255,7 @@ html_code = """
     100% { transform: translateY(-20px) scale(1.0); opacity: 1; }
   }
 
-  /* --- ボール --- */
+  /* --- ボール（赤い丸） --- */
   .ball {
     position: absolute;
     width: 30px;
@@ -251,18 +263,11 @@ html_code = """
     background-color: #ff6b6b;
     border-radius: 50%;
     border: 2px solid #e05555;
+    box-sizing: border-box;
     box-shadow: inset -5px -5px 10px rgba(0,0,0,0.2);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    font-size: 14px;
     z-index: 6;
   }
-  .ball::after {
-    content: "⚽";
-    font-size: 24px;
-    opacity: 0.8;
-  }
+  /* サッカーボールの絵文字を削除 */
 
 </style>
 </head>
@@ -271,7 +276,9 @@ html_code = """
   <div class="room-container" id="room">
     <div class="toolbar">
       <div class="tool-btn active" id="btn-fish" onclick="setMode('fish')">🐟</div>
-      <div class="tool-btn" id="btn-ball" onclick="setMode('ball')">⚽</div>
+      <div class="tool-btn" id="btn-ball" onclick="setMode('ball')">
+        <span class="red-dot-icon"></span>
+      </div>
     </div>
 
     <div class="platform draggable" id="plat-1" style="width: 100px; left: 20px; top: 250px;"></div>
@@ -423,7 +430,6 @@ html_code = """
     }
     
     if (isHoldingBall && ballObj && ballObj.isHeld) {
-        // 頭の上にボールを持つ
         ballObj.x = posX + 30;
         ballObj.y = posY - 20;
         ballObj.el.style.left = `${ballObj.x}px`;
@@ -515,7 +521,6 @@ html_code = """
       if (posX < 0) { posX = 0; velocityX *= bounce; }
       if (posX > roomRect.width - 90) { posX = roomRect.width - 90; velocityX *= bounce; }
 
-      // --- ボールとの接触 ---
       if (ballObj && !isHoldingBall && !ballObj.isHeld) {
          const catCX = posX + 45;
          const catCY = posY + 40;
@@ -526,15 +531,15 @@ html_code = """
          const dist = Math.sqrt(dx*dx + dy*dy);
          
          if (dist < 55) {
-             // 地面にいるなら「拾う」
-             if (isGrounded && !jumpAnim.active) {
+             // 床にいるなら拾う
+             if (isGrounded && !jumpAnim.active && !currentPlatform) {
                  isHoldingBall = true;
                  ballObj.isHeld = true;
                  holdStartTime = performance.now();
                  velocityX = 0; velocityY = 0;
                  updateDirectionBySpeed(0);
              } else {
-                 // 空中ならキック
+                 // 空中や足場ならキック
                  const kickPower = 0.2;
                  ballObj.vx += dx * kickPower + velocityX * 1.5;
                  ballObj.vy += dy * kickPower + velocityY * 1.5 - 2;
@@ -566,50 +571,48 @@ html_code = """
   }
 
   function chaseBallAI() {
-      // ボールがどの足場にあるかチェック
       let ballOnPlatform = null;
       platforms.forEach(plat => {
           const pTop = parseFloat(plat.style.top);
-          // ボールの底が足場の上面付近にあるか（判定を少し緩く）
           if (Math.abs((ballObj.y + 30) - pTop) < 30 && Math.abs(ballObj.vy) < 2) {
               ballOnPlatform = plat;
           }
       });
 
       if (ballOnPlatform) {
-          // ボールが足場にある
           if (currentPlatform === ballOnPlatform) {
-              // 同じ足場ならピョンピョン追いかける
               hoppingChase();
           } else {
-              // 違う場所なら、その足場へジャンプ！
               startPerfectJumpTo(ballOnPlatform);
           }
       } else {
           // ボールが床（または空中）にある
           if (isGrounded) {
-               hoppingChase();
+               // ★修正ポイント：もし足場にいるなら、床のボールへジャンプ！
+               if (currentPlatform) {
+                   const roomRect = room.getBoundingClientRect();
+                   // 床のボールを目指してジャンプ（ターゲットXはボールの位置）
+                   startPerfectJumpTo(null, ballObj.x + 15, roomRect.height - 80 - 12);
+               } else {
+                   // 床にいるなら、ぴょんぴょん追いかける
+                   hoppingChase();
+               }
           }
       }
   }
   
-  // ★新機能：ピョンピョン追いかけモード★
   function hoppingChase() {
       const ballCX = ballObj.x + 15;
       const catCX = posX + 45;
       const diffX = ballCX - catCX;
-      
-      // ボールの方向を向く
       updateDirectionBySpeed(diffX);
-
-      // 距離があればジャンプ移動
       if (Math.abs(diffX) > 10) {
           if (isGrounded) {
-             velocityY = -4; // 小ジャンプ
+             velocityY = -4;
              velocityX = (diffX > 0) ? 3 : -3;
           }
       } else {
-          velocityX = 0; // 近づいたら止まる
+          velocityX = 0;
       }
   }
 
