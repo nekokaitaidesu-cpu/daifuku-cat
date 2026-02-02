@@ -8,8 +8,8 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("Daifuku Athletic Room v3 🍄")
-st.write("「絶対に着地する」スーパー・ジャンプを実装したっち！")
+st.title("Daifuku Athletic Room v4 🍄")
+st.write("足場の上で、気持ちよさそうに寝るようになったっち！")
 
 # HTML/CSS/JSを定義
 html_code = """
@@ -138,8 +138,22 @@ html_code = """
   .face-left { transform: translate(calc(-50% - 5px), -50%); }
   .face-right { transform: translate(calc(-50% + 5px), -50%); }
 
-  .eye { width: 8px; height: 8px; background-color: white; border-radius: 50%; }
-  
+  /* 通常の目 */
+  .eye {
+    width: 8px;
+    height: 8px;
+    background-color: white;
+    border-radius: 50%;
+    transition: all 0.2s ease-out; /* 目を閉じるときのアニメーション */
+  }
+
+  /* ★ここが追加ポイント！寝ている時の目★ */
+  .sleepy .eye {
+    height: 2px; /* 高さを潰して目を閉じたように見せる */
+    border-radius: 1px;
+    transform: scaleX(1.2); /* 少し横長にして気持ちよさそうに */
+  }
+
   .shadow {
     width: 80px;
     height: 8px;
@@ -192,7 +206,6 @@ html_code = """
   const room = document.querySelector('.room-container');
   const platforms = document.querySelectorAll('.platform');
   
-  // 物理変数
   let posX = 130, posY = 300;
   let velocityX = 0, velocityY = 0;
   const gravity = 0.6;
@@ -208,17 +221,16 @@ html_code = """
   let isGrounded = false;
   let currentPlatform = null;
   
-  // ★完璧ジャンプ用のアニメーション状態管理
   let jumpAnim = {
     active: false,
     startTime: 0,
     duration: 0,
     startX: 0,
     startY: 0,
-    targetEl: null, // 目標の足場要素（nullなら床）
-    targetFloorX: 0, // 床の場合の目標X
-    targetFloorY: 0, // 床の場合の目標Y
-    peakHeight: 0 // ジャンプの頂点の高さ
+    targetEl: null,
+    targetFloorX: 0,
+    targetFloorY: 0,
+    peakHeight: 0
   };
 
   function startPhysicsLoop() {
@@ -226,75 +238,47 @@ html_code = """
   }
 
   function updatePhysics(timestamp) {
-    // 1. ジャンプアニメーション中の処理（物理演算を無視して強制移動）
     if (jumpAnim.active) {
+      // --- ジャンプアニメーション処理 (省略: 前と同じ) ---
       const elapsed = timestamp - jumpAnim.startTime;
-      const progress = Math.min(elapsed / jumpAnim.duration, 1.0); // 0.0 〜 1.0
-
-      // 目標地点の計算（足場が動いても追従するように毎回取得）
+      const progress = Math.min(elapsed / jumpAnim.duration, 1.0);
       let targetX, targetY;
-      
       if (jumpAnim.targetEl) {
-        // 足場の場合
         const pLeft = parseFloat(jumpAnim.targetEl.style.left);
         const pTop = parseFloat(jumpAnim.targetEl.style.top);
         const pWidth = parseFloat(jumpAnim.targetEl.style.width);
-        targetX = pLeft + pWidth / 2 - 45; // 中心
-        targetY = pTop - 60; // 足場の上
+        targetX = pLeft + pWidth / 2 - 45;
+        targetY = pTop - 60;
       } else {
-        // 床の場合
         targetX = jumpAnim.targetFloorX;
         targetY = jumpAnim.targetFloorY;
       }
-
-      // イージング関数（滑らかに）
-      // X軸: 線形補間
       const currentX = jumpAnim.startX + (targetX - jumpAnim.startX) * progress;
-      
-      // Y軸: 放物線（ベジェ曲線的な計算）
-      // progress 0.5 の時に peakHeight に達するようにする
-      // 公式: (1-t)^2 * start + 2(1-t)t * control + t^2 * end
-      // 制御点(Control Point)の高さを計算して調整
-      
-      // シンプルな放物線: y = start + (target - start)*t - 4*H*t*(1-t)
-      // H = peakHeight (ジャンプの高さ)
       const heightOffset = 4 * jumpAnim.peakHeight * progress * (1 - progress);
       const baseY = jumpAnim.startY + (targetY - jumpAnim.startY) * progress;
       const currentY = baseY - heightOffset;
-
-      // 座標適用
       posX = currentX;
       posY = currentY;
       catRoot.style.left = `${posX}px`;
       catRoot.style.top = `${posY}px`;
-
-      // 向きの更新
       const direction = targetX - jumpAnim.startX;
       updateDirectionBySpeed(direction);
-
-      // 終了判定
       if (progress >= 1.0) {
-        // 着地！
         jumpAnim.active = false;
         velocityX = 0; 
         velocityY = 0;
-        
-        // 足場の上なら登録
         if (jumpAnim.targetEl) {
           currentPlatform = jumpAnim.targetEl;
         } else {
-          currentPlatform = null; // 床
+          currentPlatform = null;
         }
         isGrounded = true;
         triggerBounceAnimation();
       }
-      
       requestAnimationFrame(updatePhysics);
-      return; // 物理演算処理はスキップ
+      return;
     }
 
-
-    // 2. 通常の物理演算（ドラッグ中以外）
     if (!isDragging || activeDragEl !== catRoot) {
       velocityY += gravity;
       velocityX *= friction;
@@ -309,19 +293,14 @@ html_code = """
 
       let landedThisFrame = false;
 
-      // --- 足場との衝突判定 ---
-      // 落下中のみ
       if (velocityY >= 0) {
         platforms.forEach(plat => {
           const pLeft = parseFloat(plat.style.left);
           const pTop = parseFloat(plat.style.top);
           const pWidth = parseFloat(plat.style.width);
-          
           const catFootX = posX + 45;
           const catFootY = posY + 60;
-
           if (catFootX >= pLeft && catFootX <= pLeft + pWidth) {
-             // 判定を少し甘めに
              if (catFootY >= pTop - 15 && catFootY <= pTop + 20) {
                posY = pTop - 60;
                velocityY = 0;
@@ -333,7 +312,6 @@ html_code = """
         });
       }
 
-      // --- 床との衝突判定 ---
       if (!landedThisFrame && posY > maxY) {
         posY = maxY;
         velocityY = 0;
@@ -342,14 +320,12 @@ html_code = """
         currentPlatform = null;
       }
 
-      // 足場から落ちたかどうかのチェック
-      // 今「乗ってる」はずなのに、座標が足場外なら currentPlatform を解除
       if (currentPlatform) {
          const pLeft = parseFloat(currentPlatform.style.left);
          const pWidth = parseFloat(currentPlatform.style.width);
          const catCenter = posX + 45;
          if (catCenter < pLeft || catCenter > pLeft + pWidth) {
-            currentPlatform = null; // 足場から外れた（落下開始）
+            currentPlatform = null;
          }
       }
 
@@ -364,7 +340,10 @@ html_code = """
         handleIdleBehavior();
       }
 
-      updateDirectionBySpeed(velocityX);
+      // 寝ている間は向きの更新をしない（じっとしている）
+      if (!catVisual.classList.contains('sleepy')) {
+          updateDirectionBySpeed(velocityX);
+      }
 
       catRoot.style.left = `${posX}px`;
       catRoot.style.top = `${posY}px`;
@@ -376,59 +355,79 @@ html_code = """
   function handleIdleBehavior() {
     idleTimer--;
     if (idleTimer < 0) {
-      // 0:左, 1:右, 2:待機, 3:ジャンプ移動(高確率)
-      const action = Math.floor(Math.random() * 5); 
+      // 行動開始時に必ず「寝る」状態を解除する
+      wakeUp();
 
-      switch(action) {
-        case 0: // 左
-          velocityX = -3; 
-          if(Math.random()>0.7) velocityY = -3;
-          break;
-        case 1: // 右
-          velocityX = 3;
-          if(Math.random()>0.7) velocityY = -3;
-          break;
-        case 2: // 休憩
-          break;
-        case 3: 
-        case 4: // 特殊ジャンプ（確実モード）
-          startPerfectJump();
-          break;
+      // A. 今、足場に乗っている場合 -> 「寝る」か「移動ジャンプ」
+      if (currentPlatform) {
+          // 60%で寝る、40%でジャンプ移動
+          if (Math.random() < 0.6) {
+              // 寝るアクション
+              startSleeping();
+          } else {
+              // ジャンプ移動
+              startPerfectJump();
+          }
       }
-      idleTimer = 60 + Math.random() * 100;
+      // B. 今、床にいる場合 -> 従来通りのランダム行動
+      else {
+          const action = Math.floor(Math.random() * 5); 
+          switch(action) {
+            case 0: velocityX = -3; if(Math.random()>0.7) velocityY = -3; break; // 左
+            case 1: velocityX = 3; if(Math.random()>0.7) velocityY = -3; break;  // 右
+            case 2: break; // 休憩
+            case 3: 
+            case 4: startPerfectJump(); break; // ジャンプ移動
+          }
+      }
+      
+      // 次の行動までの時間（寝る場合は長めにする）
+      if (catVisual.classList.contains('sleepy')) {
+          idleTimer = 120 + Math.random() * 180; // 2〜5秒寝る
+      } else {
+          idleTimer = 60 + Math.random() * 100;
+      }
     }
   }
 
+  // ★「寝る」を開始する関数★
+  function startSleeping() {
+      catVisual.classList.add('sleepy');
+      // 寝るときは体の傾きや顔の向きもリセットしてリラックス
+      catFace.classList.remove('face-left', 'face-right');
+      catRoot.classList.remove('walking-left', 'walking-right');
+      velocityX = 0;
+      velocityY = 0;
+  }
+
+  // ★「起こす」関数★
+  function wakeUp() {
+      catVisual.classList.remove('sleepy');
+  }
+
   function startPerfectJump() {
+    // (省略: 前と同じ)
     const roomRect = room.getBoundingClientRect();
     const maxX = roomRect.width - 90;
     const maxY = roomRect.height - 80;
     
-    let targetEl = null; // 目標足場
+    let targetEl = null;
     let tFloorX = 0;
     let tFloorY = maxY;
 
-    // A. 今、足場に乗っている場合 -> 「床」または「別の足場」へ
     if (currentPlatform) {
-       // 別の足場を探す
        let otherPlats = [];
        platforms.forEach(p => { if(p !== currentPlatform) otherPlats.push(p); });
-       
-       // 70%で床、30%で別の足場（あれば）
        if (otherPlats.length > 0 && Math.random() > 0.6) {
           targetEl = otherPlats[Math.floor(Math.random() * otherPlats.length)];
        } else {
-          // 床へ
           targetEl = null;
           tFloorX = Math.random() * maxX;
        }
-    } 
-    // B. 今、床にいる場合 -> 「足場」へ
-    else {
+    } else {
        targetEl = platforms[Math.floor(Math.random() * platforms.length)];
     }
 
-    // --- ジャンプアニメーション開始設定 ---
     jumpAnim.active = true;
     jumpAnim.startTime = performance.now();
     jumpAnim.startX = posX;
@@ -437,7 +436,6 @@ html_code = """
     jumpAnim.targetFloorX = tFloorX;
     jumpAnim.targetFloorY = tFloorY;
 
-    // 目標のY座標を取得（高さ計算用）
     let destY;
     if (targetEl) {
        destY = parseFloat(targetEl.style.top) - 60;
@@ -445,15 +443,10 @@ html_code = """
        destY = tFloorY;
     }
 
-    // ジャンプの高さ設定（今の位置と目標のうち、高い方よりもさらに80px上まで飛ぶ）
     const highestPoint = Math.min(posY, destY);
     const apex = highestPoint - 80;
-    // 高さの差分（現在のY座標からの相対値）
-    // 数式上 heightOffset = 4 * H * ... なので、H は頂点までの距離
-    // H = startY - apex; だが、移動中にYが変化するので単純に「一番高いところへの差分」＋αを設定
-    jumpAnim.peakHeight = 120 + Math.abs(posY - destY) * 0.2; // 距離に応じて少し高く
+    jumpAnim.peakHeight = 120 + Math.abs(posY - destY) * 0.2;
 
-    // 距離に応じた時間設定
     let dist = 0;
     if(targetEl) {
         const pLeft = parseFloat(targetEl.style.left);
@@ -461,13 +454,12 @@ html_code = """
     } else {
         dist = Math.abs(tFloorX - posX);
     }
-    jumpAnim.duration = 600 + dist * 1.5; // 近ければ速く、遠ければゆっくり
-
-    // ジャンプ直前の溜めモーション（見た目だけ）
+    jumpAnim.duration = 600 + dist * 1.5;
     triggerBounceAnimation();
   }
 
   function updateDirectionBySpeed(val) {
+    // (省略: 前と同じ)
     catFace.classList.remove('face-left', 'face-right');
     catRoot.classList.remove('walking-left', 'walking-right');
     if (Math.abs(val) > 0.1) {
@@ -495,7 +487,9 @@ html_code = """
     activeDragEl.classList.add('grabbing');
     
     if (activeDragEl === catRoot) {
-      jumpAnim.active = false; // 強制ジャンプ中断
+      // ドラッグ開始時に必ず起こす！
+      wakeUp();
+      jumpAnim.active = false;
       catVisual.classList.remove('boing-effect'); 
       velocityX = 0; velocityY = 0;
       currentPlatform = null;
@@ -510,15 +504,14 @@ html_code = """
   }
 
   function drag(e) {
+    // (省略: 前と同じ)
     if (!isDragging || !activeDragEl) return;
     e.preventDefault();
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     const roomRect = room.getBoundingClientRect();
-
     let newLeft = clientX - roomRect.left - dragOffsetLeft;
     let newTop = clientY - roomRect.top - dragOffsetTop;
-
     if (activeDragEl === catRoot) {
       posX = newLeft;
       posY = newTop;
@@ -528,6 +521,7 @@ html_code = """
   }
 
   function endDrag() {
+    // (省略: 前と同じ)
     if (activeDragEl) activeDragEl.classList.remove('grabbing');
     isDragging = false;
     activeDragEl = null;
@@ -547,5 +541,4 @@ html_code = """
 </body>
 </html>
 """
-
 components.html(html_code, height=550)
