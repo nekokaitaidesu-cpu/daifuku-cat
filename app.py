@@ -8,8 +8,8 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("Daifuku Athletic Room v14 🍄")
-st.write("猫じゃらしの動きがリアルになったっち！高いところも狙うよ！🪶")
+st.title("Daifuku Athletic Room v15 🍄")
+st.write("猫じゃらしがリアルになったっち！フワフワの羽で遊んでね！🪶")
 
 # HTML/CSS/JSを定義
 html_code = """
@@ -48,7 +48,7 @@ html_code = """
   }
   
   .room-container.wand-mode {
-    cursor: none; /* 棒モード中はカーソルを消す */
+    cursor: none;
   }
 
   /* --- ツールバー --- */
@@ -265,7 +265,7 @@ html_code = """
     box-sizing: border-box;
   }
 
-  /* --- 猫じゃらし --- */
+  /* --- 猫じゃらし (リニューアル) --- */
   #wand {
     position: absolute;
     top: 0;
@@ -275,36 +275,51 @@ html_code = """
     display: none;
   }
   
+  /* 棒：下（カーソル位置）が支点 */
   .wand-stick {
     position: absolute;
-    top: 0; /* カーソル位置が起点 */
-    left: 0;
+    bottom: 0; /* カーソル位置がここになる */
+    left: -2px; /* 中心合わせ */
     width: 4px;
-    height: 50px; /* 長さを半分に */
+    height: 70px; /* 長さ調整 */
     background-color: #8b5a2b;
     border-radius: 2px;
-    transform-origin: top center; /* 上を中心に回転 */
-    /* 初期角度はJSで制御 */
+    transform-origin: bottom center; /* 下を中心に回転 */
   }
   
+  /* 羽：棒の上につく。リアルな表現に変更 */
   .wand-feather {
     position: absolute;
-    top: 45px; /* 棒の先端付近 */
-    left: -18px;
-    width: 40px;
-    height: 40px;
-    background: radial-gradient(circle at 30% 30%, #fff, #f0f0f0);
-    border-radius: 50% 0 50% 50%;
+    bottom: 65px; /* 棒の先端付近 */
+    left: -15px;
+    width: 30px;
+    height: 50px;
+    /* 羽のベース形状 */
+    background: linear-gradient(to bottom, #fff 0%, #f0f0f0 100%);
+    border-radius: 50% 50% 20% 20%;
     box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    transform-origin: center top; /* 羽の付け根で揺れる */
+    transform-origin: center bottom; /* 棒との接続点で揺れる */
   }
   
+  /* 羽のフサフサ感1 */
+  .wand-feather::before {
+    content: "";
+    position: absolute;
+    top: 10%; left: -20%;
+    width: 140%; height: 80%;
+    background: radial-gradient(ellipse at center, rgba(255,255,255,0.8) 0%, rgba(240,240,240,0) 70%);
+    border-radius: 50%;
+    z-index: -1;
+  }
+  
+  /* 羽のフサフサ感2（軸） */
   .wand-feather::after {
     content: "";
     position: absolute;
-    top: 5px; left: 5px; width: 20px; height: 20px;
-    background-color: rgba(255,200,200,0.5);
-    border-radius: 50%; filter: blur(2px);
+    bottom: 0; left: 50%;
+    width: 2px; height: 60%;
+    background-color: #ddd;
+    transform: translateX(-50%);
   }
 
 </style>
@@ -384,10 +399,11 @@ html_code = """
 
   // 猫じゃらし用変数
   let wandTargetX = 0, wandTargetY = 0;
-  let lastWandTargetX = 0; // 前回の位置（速度計算用）
+  let lastWandTargetX = 0;
   let wandVX = 0; 
   let happyCounter = 0;
-  let wandAngle = 0; // 棒の角度
+  let wandAngle = 0;
+  let lastHeartTime = 0; // ハート出現のクールダウン用
 
   let jumpAnim = {
     active: false, startTime: 0, duration: 0, startX: 0, startY: 0,
@@ -408,7 +424,6 @@ html_code = """
         btnWand.classList.add('active');
         room.classList.add('wand-mode');
         wandEl.style.display = 'block';
-        // 初期位置リセット
         lastWandTargetX = wandTargetX;
     }
   }
@@ -466,12 +481,10 @@ html_code = """
 
   function updatePhysics(timestamp) {
     if (currentMode === 'wand') {
-        updateWandPhysics();
+        updateWandPhysics(timestamp); // timestampを渡す
     } else {
         if (catVisual.classList.contains('sleepy')) {
-            // AI制御の睡眠は維持
         } else {
-            // 棒モードのまったり顔は解除
             catVisual.classList.remove('sleepy');
         }
     }
@@ -498,52 +511,57 @@ html_code = """
   }
 
   // ★猫じゃらしの物理とAI★
-  function updateWandPhysics() {
-      // 1. 棒の位置をカーソルに追従（持ち手）
+  function updateWandPhysics(timestamp) {
       wandEl.style.left = `${wandTargetX}px`;
       wandEl.style.top = `${wandTargetY}px`;
 
-      // 2. 速度計算と角度更新
       wandVX = wandTargetX - lastWandTargetX;
       lastWandTargetX = wandTargetX;
 
-      // 速度に応じて棒と羽を傾ける（慣性表現）
-      let targetAngle = -wandVX * 3; // 逆方向に傾く
-      // 角度制限
+      // 速度に応じて棒と羽を傾ける（向きが逆になったので計算も反転）
+      let targetAngle = wandVX * 3; 
       if (targetAngle > 45) targetAngle = 45;
       if (targetAngle < -45) targetAngle = -45;
       
-      // 滑らかに角度を変える
       wandAngle += (targetAngle - wandAngle) * 0.2;
 
       wandStick.style.transform = `rotate(${wandAngle}deg)`;
-      // 羽は棒の角度にさらに少し遅れて揺れるイメージ
       wandFeather.style.transform = `rotate(${wandAngle * 1.5}deg)`;
 
       // --- 大福ちゃんの反応 ---
       const catCX = posX + 45;
       const catCY = posY + 40;
-      // 羽の位置（簡易計算：棒の先端付近）
-      const featherX = wandTargetX + Math.sin(wandAngle * Math.PI/180) * 50;
-      const featherY = wandTargetY + Math.cos(wandAngle * Math.PI/180) * 50;
+      // 羽の先端位置の計算（棒の長さ70px + 羽の高さ50pxの半分くらいの位置）
+      // 棒が上向きなので、角度に応じて計算
+      const featherHeight = 90; 
+      const featherX = wandTargetX - Math.sin(wandAngle * Math.PI/180) * featherHeight;
+      const featherY = wandTargetY - Math.cos(wandAngle * Math.PI/180) * featherHeight;
       
       const distX = featherX - catCX;
       const distY = featherY - catCY;
-      // const dist = Math.sqrt(distX*distX + distY*distY); // 使ってないのでコメントアウト
 
-      // まったり顔判定
-      if (Math.abs(distX) < 40 && Math.abs(distY) < 30 && distY > -10) {
+      // ★まったり顔判定（範囲拡大）★
+      // 顔の前、または頭の上（少し広い範囲）
+      if (Math.abs(distX) < 50 && distY < 30 && distY > -120) {
           if (!catVisual.classList.contains('sleepy')) catVisual.classList.add('sleepy');
-          velocityX *= 0.8; return;
+          velocityX *= 0.8;
+          
+          // ★激喜び判定（頭の上で継続）★
+          if (distY < -20) {
+              happyCounter++;
+              if (happyCounter > 40) {
+                  // クールダウン（0.3秒）
+                  if (timestamp - lastHeartTime > 300 && Math.random() < 0.2) {
+                      spawnHeart();
+                      lastHeartTime = timestamp;
+                  }
+              }
+          } else {
+              happyCounter = 0;
+          }
+          return; // まったり中は追従しない
       } else {
           catVisual.classList.remove('sleepy');
-      }
-
-      // 激喜び判定
-      if (Math.abs(distX) < 40 && distY < -20 && distY > -100) {
-          happyCounter++;
-          if (happyCounter > 60 && Math.random() < 0.1) spawnHeart();
-      } else {
           happyCounter = 0;
       }
 
@@ -556,13 +574,10 @@ html_code = """
           velocityX *= 0.8;
       }
 
-      // ★ジャンプ判定（強化）★
-      // 羽が高い位置にある場合
-      if (distY < -60 && isGrounded) {
-          // 真下付近にいるなら、ランダムでジャンプ！
-          if (Math.abs(distX) < 30 && Math.random() < 0.05) {
-              // 足場にいるときは高く飛ぶ
-              const jumpPower = currentPlatform ? -12 : -9;
+      // ジャンプ判定
+      if (distY < -80 && isGrounded) {
+          if (Math.abs(distX) < 40 && Math.random() < 0.05) {
+              const jumpPower = currentPlatform ? -13 : -10;
               velocityY = jumpPower - Math.random() * 3;
               triggerBounceAnimation();
           }
