@@ -122,7 +122,6 @@ html_code = """
       </div>
     </div>
     <div class="shadow"></div>
-    <p>yui. style animation</p>
   </div>
 </body>
 </html>
