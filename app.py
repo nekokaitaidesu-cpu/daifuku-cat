@@ -8,8 +8,8 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("Daifuku Athletic Room 🍄")
-st.write("足場をドラッグして、好きな場所に配置してみてね！")
+st.title("Daifuku Athletic Room v2 🍄")
+st.write("今度こそ！華麗にジャンプして足場に乗るっち！")
 
 # HTML/CSS/JSを定義
 html_code = """
@@ -34,7 +34,7 @@ html_code = """
   .room-container {
     position: relative;
     width: 350px;
-    height: 450px; /* 少し高さを広げたっち */
+    height: 450px;
     background-color: #fdfaf5;
     border: 4px solid #d4c4b5;
     border-bottom: 8px solid #bfab99;
@@ -43,7 +43,6 @@ html_code = """
     overflow: hidden;
   }
 
-  /* --- 共通のドラッグ可能クラス --- */
   .draggable {
     cursor: grab;
     touch-action: none;
@@ -51,10 +50,10 @@ html_code = """
   }
   .draggable.grabbing {
     cursor: grabbing;
-    z-index: 100; /* 持ってる時は一番手前に */
+    z-index: 100;
   }
 
-  /* --- 大福キャット --- */
+  /* --- 猫 --- */
   #cat-root {
     left: 130px;
     top: 300px;
@@ -150,20 +149,15 @@ html_code = """
     pointer-events: none;
   }
 
-  /* --- 足場（プラットフォーム）のデザイン --- */
+  /* --- 足場 --- */
   .platform {
     height: 12px;
-    background-color: #e6c68b; /* 木の色 */
+    background-color: #e6c68b;
     border: 2px solid #bfa068;
     border-radius: 6px;
     box-shadow: 0 4px 0 rgba(0,0,0,0.1);
-    /* 木目っぽい模様（CSSストライプ） */
     background-image: repeating-linear-gradient(
-      45deg,
-      transparent,
-      transparent 10px,
-      rgba(255,255,255,0.2) 10px,
-      rgba(255,255,255,0.2) 20px
+      45deg, transparent, transparent 10px, rgba(255,255,255,0.2) 10px, rgba(255,255,255,0.2) 20px
     );
   }
 
@@ -172,7 +166,6 @@ html_code = """
 <body>
 
   <div class="room-container">
-    
     <div class="platform draggable" id="plat-1" style="width: 100px; left: 20px; top: 250px;"></div>
     <div class="platform draggable" id="plat-2" style="width: 100px; left: 220px; top: 150px;"></div>
 
@@ -190,7 +183,6 @@ html_code = """
       </div>
       <div class="shadow"></div>
     </div>
-
   </div>
 
 <script>
@@ -200,14 +192,12 @@ html_code = """
   const room = document.querySelector('.room-container');
   const platforms = document.querySelectorAll('.platform');
   
-  // 物理変数
   let posX = 130, posY = 300;
   let velocityX = 0, velocityY = 0;
   const gravity = 0.6;
-  const friction = 0.92;
+  const friction = 0.92; 
   const bounce = -0.3;
 
-  // 状態管理
   let isDragging = false;
   let activeDragEl = null;
   let dragStartX, dragStartY;
@@ -215,57 +205,60 @@ html_code = """
 
   let idleTimer = 60;
   let isGrounded = false;
-  let currentPlatform = null; // 今乗っている台（nullなら床か空中）
+  let currentPlatform = null;
+  
+  // ★重要：自動ジャンプ中は摩擦を無視するためのフラグ
+  let isAutoJumping = false;
 
-  // --- メインループ ---
   function startPhysicsLoop() {
     requestAnimationFrame(updatePhysics);
   }
 
   function updatePhysics() {
-    // 猫の物理演算はドラッグしていない時だけ
     if (!isDragging || activeDragEl !== catRoot) {
       velocityY += gravity;
-      velocityX *= friction;
+
+      // ★自動ジャンプ中（空中）は摩擦をかけない！これで狙った場所に届く！
+      if (!isAutoJumping) {
+        velocityX *= friction;
+      }
       velocityY *= friction;
 
       posX += velocityX;
       posY += velocityY;
 
       const roomRect = room.getBoundingClientRect();
-      const charRect = catRoot.getBoundingClientRect();
       
-      // お部屋サイズ内での座標制限
-      const maxX = roomRect.width - 90; // 幅90px
-      const maxY = roomRect.height - 80; // 高さ80px (影含む全体枠はもう少し大きいが判定はこれで)
+      const maxX = roomRect.width - 90;
+      const maxY = roomRect.height - 80;
 
       let landedThisFrame = false;
 
       // --- 足場との衝突判定 ---
-      // ジャンプ中（上昇中）はすり抜けて、落下中のみ乗れる
-      currentPlatform = null; // 一旦リセット
-      
-      if (velocityY >= 0) { // 落下中のみ判定
+      // 落下中のみ判定
+      if (velocityY >= 0) {
         platforms.forEach(plat => {
-          // getBoundingClientRectは画面全体での位置なので、room内相対位置に変換が必要
-          // しかしドラッグでstyle.left/topが変わっているので、styleをパースするのが一番正確かつ速い
           const pLeft = parseFloat(plat.style.left);
           const pTop = parseFloat(plat.style.top);
           const pWidth = parseFloat(plat.style.width);
-          const pHeight = 16; // border含む高さ概算
 
-          // 猫の足元（X中心、Y下端）
-          const catFootX = posX + 45; // 幅90の半分
-          const catFootY = posY + 60; // 本体の高さ（影除く）
+          const catFootX = posX + 45; // 中心
+          const catFootY = posY + 60; // 足元
 
-          // 判定：足場の上にいて、かつ高さが近い
+          // 足場の範囲内、かつ高さが合致
           if (catFootX >= pLeft && catFootX <= pLeft + pWidth) {
-             // 許容範囲（足場の少し上〜少し下）
-             if (catFootY >= pTop - 5 && catFootY <= pTop + 15) {
-               posY = pTop - 60; // 足場の上に乗せる
+             if (catFootY >= pTop - 10 && catFootY <= pTop + 20) { // 判定を少し広げた
+               posY = pTop - 60; // 完全に足場の上に乗せる
                velocityY = 0;
+               velocityX = 0; // 着地したら滑らないように止める
                landedThisFrame = true;
-               currentPlatform = plat; // この台に乗っていると記録
+               currentPlatform = plat;
+               
+               // ジャンプ成功！モード解除
+               if (isAutoJumping) {
+                 isAutoJumping = false;
+                 triggerBounceAnimation(); // 着地ぽよん
+               }
              }
           }
         });
@@ -274,9 +267,15 @@ html_code = """
       // --- 床との衝突判定 ---
       if (!landedThisFrame && posY > maxY) {
         posY = maxY;
-        velocityY *= bounce;
-        if (Math.abs(velocityY) < 1) velocityY = 0;
+        velocityY = 0; // 床でも跳ねずにピタッと止める（大福感）
+        velocityX = 0;
         landedThisFrame = true;
+        currentPlatform = null; // 床なのでnull
+        
+        if (isAutoJumping) {
+           isAutoJumping = false;
+           triggerBounceAnimation();
+        }
       }
 
       isGrounded = landedThisFrame;
@@ -286,17 +285,12 @@ html_code = """
       if (posX < 0) { posX = 0; velocityX *= bounce; }
       if (posX > maxX) { posX = maxX; velocityX *= bounce; }
 
-      // 自動行動AI
-      if (isGrounded && Math.abs(velocityX) < 0.5 && !isDragging) {
+      // 自動行動AI (接地していて、かつ自動ジャンプ中でない時)
+      if (isGrounded && !isDragging && !isAutoJumping) {
         handleIdleBehavior();
       }
 
-      // 見た目の更新
       updateDirection();
-      
-      // ぽよんアニメーション（着地時）
-      // 簡易的に、前フレームで空中かつ今回接地で、速度があった場合
-      // （ここでは省略して、自動行動のジャンプだけで可愛く見せる）
 
       catRoot.style.left = `${posX}px`;
       catRoot.style.top = `${posY}px`;
@@ -305,12 +299,10 @@ html_code = """
     requestAnimationFrame(updatePhysics);
   }
 
-  // --- 賢いAI ---
   function handleIdleBehavior() {
     idleTimer--;
     if (idleTimer < 0) {
-      // 行動決定 (0:左, 1:右, 2:小ジャンプ, 3:足場へジャンプ/降りる)
-      // 足場があるときはジャンプの確率を上げる
+      // 0:左, 1:右, 2:待機, 3:ジャンプ移動(高確率)
       const action = Math.floor(Math.random() * 5); 
 
       switch(action) {
@@ -322,11 +314,10 @@ html_code = """
           velocityX = 3;
           if(Math.random()>0.7) velocityY = -3;
           break;
-        case 2: // 小ジャンプ
-          velocityY = -5;
+        case 2: // 休憩
           break;
         case 3: 
-        case 4: // 特殊ジャンプ（足場へ or 床へ）
+        case 4: // 特殊ジャンプ（足場⇔床）
           performSpecialJump();
           break;
       }
@@ -335,57 +326,68 @@ html_code = """
   }
 
   function performSpecialJump() {
-    // A. 今、足場に乗っているなら → 降りる
+    let targetX, targetY;
+    const roomRect = room.getBoundingClientRect();
+    const maxX = roomRect.width - 90;
+    const maxY = roomRect.height - 80;
+
+    // A. 今、足場に乗っている場合 -> 「床」または「別の足場」へ
     if (currentPlatform) {
-       // 左右どちらかに降りる
-       velocityX = (Math.random() > 0.5) ? 4 : -4;
-       velocityY = -4; // 軽くホップ
-       return;
+       // 70%の確率で床へ降りる、30%で別の足場へ（もしあれば）
+       if (Math.random() < 0.7 || platforms.length < 2) {
+          // 床のランダムな位置へ
+          targetX = Math.random() * maxX;
+          targetY = maxY; // 床のY座標
+       } else {
+          // 別の足場を探す
+          let otherPlats = [];
+          platforms.forEach(p => { if(p !== currentPlatform) otherPlats.push(p); });
+          const targetPlat = otherPlats[Math.floor(Math.random() * otherPlats.length)];
+          const pLeft = parseFloat(targetPlat.style.left);
+          const pWidth = parseFloat(targetPlat.style.width);
+          const pTop = parseFloat(targetPlat.style.top);
+          
+          targetX = pLeft + pWidth / 2 - 45; // 足場中心
+          targetY = pTop - 60; // 足場の上
+       }
+    } 
+    // B. 今、床にいる場合 -> 「足場」へ
+    else {
+       // ランダムな足場を選ぶ
+       const targetPlat = platforms[Math.floor(Math.random() * platforms.length)];
+       const pLeft = parseFloat(targetPlat.style.left);
+       const pWidth = parseFloat(targetPlat.style.width);
+       const pTop = parseFloat(targetPlat.style.top);
+       
+       targetX = pLeft + pWidth / 2 - 45;
+       targetY = pTop - 60;
     }
 
-    // B. 今、床にいるなら → 足場に乗りたい
-    // ランダムにターゲット足場を選ぶ
-    const targetPlat = platforms[Math.floor(Math.random() * platforms.length)];
+    // --- 放物線の計算（摩擦無視前提） ---
+    // 頂点高さの設定（現在地と目的地より高い位置）
+    const startY = posY;
+    const peakHeight = Math.min(startY, targetY) - 80; // 少なくとも80px上に飛ぶ
     
-    // 足場の位置を取得
-    const pLeft = parseFloat(targetPlat.style.left);
-    const pTop = parseFloat(targetPlat.style.top);
-    const pWidth = parseFloat(targetPlat.style.width);
+    const h1 = startY - peakHeight; // 上昇距離
+    const h2 = targetY - peakHeight; // 下降距離
     
-    // ターゲット地点（足場の中心、少し上）
-    const targetX = pLeft + pWidth / 2 - 45; // 猫の中心座標に合わせる
-    const targetY = pTop - 60; // 足場の上
+    // 上昇時間 t1 = sqrt(2 * h1 / g)
+    const t1 = Math.sqrt(2 * h1 / gravity);
+    // 下降時間 t2 = sqrt(2 * h2 / g)
+    const t2 = Math.sqrt(2 * h2 / gravity);
+    
+    const totalTime = t1 + t2;
 
-    // 現在地より高い場所にある足場だけ狙う
-    if (targetY < posY) {
-      // ジャンプ計算（物理の公式）
-      // 到達したい高さの少し上を頂点とする
-      const apexY = targetY - 40; // 足場より40px高く飛ぶ
-      const heightDiff = posY - apexY;
-      
-      // 必要な初速 Vy = -sqrt(2 * g * h)
-      const reqVy = -Math.sqrt(2 * gravity * heightDiff);
-      
-      // 滞空時間（頂点まで + 頂点からターゲットまで）
-      // T_up = |Vy| / g
-      const t_up = Math.abs(reqVy) / gravity;
-      // T_down = sqrt(2 * (targetY - apexY) / g) ... targetY > apexYなので正
-      // しかしY軸は下向き正なので、(targetY - apexY) は正の値(40)
-      const t_down = Math.sqrt(2 * (targetY - apexY) / gravity);
-      const totalTime = t_up + t_down;
+    // 初速度計算
+    const vY = -Math.sqrt(2 * gravity * h1); // 上向き初速
+    const vX = (targetX - posX) / totalTime; // 水平速度
 
-      // 必要な水平速度 Vx = 距離 / 時間
-      const reqVx = (targetX - posX) / totalTime;
-
-      // 発射！
-      velocityY = reqVy;
-      velocityX = reqVx;
-      
-      triggerBounceAnimation(); // 勢いをつける演出
-    } else {
-      // 足場が下にある（ありえないけど）場合は普通のジャンプ
-      velocityY = -6;
-    }
+    // ジャンプ実行！
+    velocityY = vY;
+    velocityX = vX;
+    isAutoJumping = true; // ★摩擦無効モードON
+    
+    triggerBounceAnimation(); // 勢いよく
   }
 
   function updateDirection() {
@@ -408,30 +410,25 @@ html_code = """
     catVisual.classList.add('boing-effect');
   }
 
-  // --- 汎用ドラッグ処理 ---
   function startDrag(e) {
     const target = e.target.closest('.draggable');
     if (!target) return;
-
     isDragging = true;
     activeDragEl = target;
     activeDragEl.classList.add('grabbing');
     
-    // 猫の場合はアニメーションリセット
     if (activeDragEl === catRoot) {
       catVisual.classList.remove('boing-effect'); 
       velocityX = 0; velocityY = 0;
       currentPlatform = null;
+      isAutoJumping = false; // ドラッグしたら自動モード解除
     }
 
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    
-    // room内でのクリック位置計算
     const roomRect = room.getBoundingClientRect();
     const elemRect = activeDragEl.getBoundingClientRect();
 
-    // マウス位置と要素左上のズレを保存
     dragOffsetLeft = clientX - elemRect.left;
     dragOffsetTop = clientY - elemRect.top;
   }
@@ -444,36 +441,25 @@ html_code = """
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     const roomRect = room.getBoundingClientRect();
 
-    // room相対座標に変換
     let newLeft = clientX - roomRect.left - dragOffsetLeft;
     let newTop = clientY - roomRect.top - dragOffsetTop;
 
-    // 画面外に出ないように制限
-    // (簡易的に)
-    // activeDragEl.style.left = `${newLeft}px`;
-    // activeDragEl.style.top = `${newTop}px`;
-    
-    // 猫の変数(posX, posY)はドラッグ中も同期させる
     if (activeDragEl === catRoot) {
       posX = newLeft;
       posY = newTop;
     }
     
-    // 要素に反映
     activeDragEl.style.left = `${newLeft}px`;
     activeDragEl.style.top = `${newTop}px`;
   }
 
   function endDrag() {
-    if (activeDragEl) {
-      activeDragEl.classList.remove('grabbing');
-    }
+    if (activeDragEl) activeDragEl.classList.remove('grabbing');
     isDragging = false;
     activeDragEl = null;
     idleTimer = 60; 
   }
 
-  // イベントリスナー（room全体で監視して、targetで判断）
   room.addEventListener('mousedown', startDrag);
   window.addEventListener('mousemove', drag);
   window.addEventListener('mouseup', endDrag);
