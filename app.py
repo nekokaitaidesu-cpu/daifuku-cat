@@ -8,8 +8,8 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("Daifuku Athletic Room v8 🍄")
-st.write("お魚は「1個ずつ」味わって食べるようになったっち！🐟")
+st.title("Daifuku Athletic Room v9 🍄")
+st.write("左上のアイコンで「ごはん」と「ボール」を切り替えて遊んでね！")
 
 # HTML/CSS/JSを定義
 html_code = """
@@ -18,10 +18,7 @@ html_code = """
 <head>
 <meta charset="UTF-8">
 <style>
-  /* 全体のタップハイライトを無効化（青くなるのを防ぐ） */
-  * {
-    -webkit-tap-highlight-color: transparent;
-  }
+  * { -webkit-tap-highlight-color: transparent; }
 
   body {
     height: 100vh;
@@ -47,6 +44,39 @@ html_code = """
     box-shadow: 0 10px 25px rgba(0,0,0,0.1);
     overflow: hidden;
     cursor: pointer;
+  }
+
+  /* --- ツールバー --- */
+  .toolbar {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    display: flex;
+    gap: 10px;
+    z-index: 50;
+  }
+  
+  .tool-btn {
+    width: 40px;
+    height: 40px;
+    background-color: white;
+    border: 3px solid #ddd;
+    border-radius: 8px;
+    font-size: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: transform 0.1s;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  }
+  
+  .tool-btn:active { transform: scale(0.9); }
+  
+  /* 選択中のスタイル */
+  .tool-btn.active {
+    border-color: #ffcc00; /* 黄色い枠 */
+    background-color: #fffbe0;
   }
 
   .draggable {
@@ -150,19 +180,8 @@ html_code = """
   .face-left { transform: translate(calc(-50% - 5px), -50%); }
   .face-right { transform: translate(calc(-50% + 5px), -50%); }
 
-  .eye {
-    width: 8px;
-    height: 8px;
-    background-color: white;
-    border-radius: 50%;
-    transition: all 0.2s ease-out;
-  }
-  .sleepy .eye {
-    height: 2px;
-    border-radius: 1px;
-    transform: scaleX(1.2);
-    margin-top: 2px;
-  }
+  .eye { width: 8px; height: 8px; background-color: white; border-radius: 50%; transition: all 0.2s ease-out; }
+  .sleepy .eye { height: 2px; border-radius: 1px; transform: scaleX(1.2); margin-top: 2px; }
 
   .shadow {
     width: 80px;
@@ -180,9 +199,7 @@ html_code = """
     border: 2px solid #bfa068;
     border-radius: 6px;
     box-shadow: 0 4px 0 rgba(0,0,0,0.1);
-    background-image: repeating-linear-gradient(
-      45deg, transparent, transparent 10px, rgba(255,255,255,0.2) 10px, rgba(255,255,255,0.2) 20px
-    );
+    background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.2) 10px, rgba(255,255,255,0.2) 20px);
   }
 
   /* --- お魚 --- */
@@ -226,11 +243,38 @@ html_code = """
     100% { transform: translateY(-20px) scale(1.0); opacity: 1; }
   }
 
+  /* --- ボール --- */
+  .ball {
+    position: absolute;
+    width: 30px;
+    height: 30px;
+    background-color: #ff6b6b; /* 赤いボール */
+    border-radius: 50%;
+    border: 2px solid #e05555;
+    box-shadow: inset -5px -5px 10px rgba(0,0,0,0.2);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 14px;
+    z-index: 6;
+  }
+  /* サッカーボールっぽい模様（簡易） */
+  .ball::after {
+    content: "⚽";
+    font-size: 24px;
+    opacity: 0.8;
+  }
+
 </style>
 </head>
 <body>
 
   <div class="room-container" id="room">
+    <div class="toolbar">
+      <div class="tool-btn active" id="btn-fish" onclick="setMode('fish')">🐟</div>
+      <div class="tool-btn" id="btn-ball" onclick="setMode('ball')">⚽</div>
+    </div>
+
     <div class="platform draggable" id="plat-1" style="width: 100px; left: 20px; top: 250px;"></div>
     <div class="platform draggable" id="plat-2" style="width: 100px; left: 220px; top: 150px;"></div>
 
@@ -256,7 +300,11 @@ html_code = """
   const catFace = document.getElementById('cat-face');
   const room = document.getElementById('room');
   const platforms = document.querySelectorAll('.platform');
+  const btnFish = document.getElementById('btn-fish');
+  const btnBall = document.getElementById('btn-ball');
   
+  // --- 状態管理 ---
+  let currentMode = 'fish'; // 'fish' or 'ball'
   let posX = 130, posY = 300;
   let velocityX = 0, velocityY = 0;
   const gravity = 0.6;
@@ -274,7 +322,8 @@ html_code = """
   let currentPlatform = null;
   
   let currentFish = null;
-  
+  let ballObj = null; // { el, x, y, vx, vy }
+
   let isNoticing = false;
   let noticeTimeout = null;
 
@@ -291,24 +340,36 @@ html_code = """
     peakHeight: 0
   };
 
-  // --- お魚クリックイベント ---
-  room.addEventListener('click', (e) => {
-    // ドラッグや要素クリックは無視
-    if (hasDragged) return;
-    if (e.target.closest('.draggable')) return;
-    
-    // ★ここが修正ポイント！★
-    // 既にお魚がある、または気づき中、またはお魚ジャンプ中なら、
-    // 次のお魚を置かせない（returnで処理を終わらせる）
-    if (currentFish || isNoticing || (jumpAnim.active && jumpAnim.targetFish)) {
-        return;
+  // --- モード切替 ---
+  window.setMode = function(mode) {
+    currentMode = mode;
+    if (mode === 'fish') {
+      btnFish.classList.add('active');
+      btnBall.classList.remove('active');
+    } else {
+      btnFish.classList.remove('active');
+      btnBall.classList.add('active');
     }
+  }
+
+  // --- クリックイベント ---
+  room.addEventListener('click', (e) => {
+    if (hasDragged) return;
+    if (e.target.closest('.draggable') || e.target.closest('.tool-btn')) return;
 
     const roomRect = room.getBoundingClientRect();
     const clickX = e.clientX - roomRect.left;
     const clickY = e.clientY - roomRect.top;
 
-    spawnFish(clickX, clickY);
+    if (currentMode === 'fish') {
+      // お魚モード処理
+      if (currentFish || isNoticing || (jumpAnim.active && jumpAnim.targetFish)) return;
+      spawnFish(clickX, clickY);
+
+    } else if (currentMode === 'ball') {
+      // ボールモード処理：ボールを生成（既にあればリセットして移動）
+      spawnBall(clickX, clickY);
+    }
   });
 
   function spawnFish(x, y) {
@@ -319,123 +380,106 @@ html_code = """
     fish.style.top = (y - 12) + 'px';
     room.appendChild(fish);
     currentFish = fish;
-
     startNoticeSequence(x, y);
   }
 
-  function startNoticeSequence(fishX, fishY) {
-      isNoticing = true;
-      wakeUp();
-      velocityX = 0; velocityY = 0;
+  function spawnBall(x, y) {
+    // 既存のボールがあれば削除
+    if (ballObj && ballObj.el) ballObj.el.remove();
 
-      const direction = fishX - (posX + 45);
-      updateDirectionBySpeed(direction);
+    const ballEl = document.createElement('div');
+    ballEl.classList.add('ball');
+    ballEl.style.left = (x - 15) + 'px';
+    ballEl.style.top = (y - 15) + 'px';
+    room.appendChild(ballEl);
 
-      spawnNoticeMark();
-
-      noticeTimeout = setTimeout(() => {
-          startJumpToFish(fishX, fishY);
-          isNoticing = false; 
-          const mark = room.querySelector('.notice-mark');
-          if(mark) mark.remove();
-      }, 600); 
-  }
-
-  function spawnNoticeMark() {
-      const mark = document.createElement('div');
-      mark.classList.add('notice-mark');
-      mark.textContent = '!';
-      mark.style.left = (posX + 40) + 'px';
-      mark.style.top = (posY - 30) + 'px';
-      room.appendChild(mark);
-  }
-
-  function startJumpToFish(targetX, targetY) {
-    if (!currentFish) {
-        isNoticing = false;
-        return;
-    }
-    jumpAnim.active = true;
-    jumpAnim.startTime = performance.now();
-    jumpAnim.startX = posX;
-    jumpAnim.startY = posY;
-    jumpAnim.targetEl = null;
-    jumpAnim.targetFish = { x: targetX - 45, y: targetY - 30 };
+    ballObj = {
+      el: ballEl,
+      x: x - 15,
+      y: y - 15,
+      vx: 0,
+      vy: 0
+    };
     
-    const destY = jumpAnim.targetFish.y;
-    jumpAnim.peakHeight = 150 + Math.abs(posY - destY) * 0.2;
-
-    const dist = Math.abs(jumpAnim.targetFish.x - posX);
-    jumpAnim.duration = 500 + dist * 1.2;
-
-    triggerBounceAnimation();
+    // 生成時に少し跳ねさせる
+    ballObj.vy = -5;
+    
+    // 猫が気づく
+    wakeUp();
   }
 
+  // --- 物理ループ ---
   function startPhysicsLoop() {
     requestAnimationFrame(updatePhysics);
   }
 
   function updatePhysics(timestamp) {
+    // 1. ボールの物理演算
+    if (ballObj) {
+      updateBallPhysics();
+    }
+
+    // 2. 猫のジャンプアニメーション（お魚）
     if (jumpAnim.active) {
-      const elapsed = timestamp - jumpAnim.startTime;
-      const progress = Math.min(elapsed / jumpAnim.duration, 1.0);
-      let targetX, targetY;
-      
-      if (jumpAnim.targetFish) {
-        targetX = jumpAnim.targetFish.x;
-        targetY = jumpAnim.targetFish.y;
-      } else if (jumpAnim.targetEl) {
-        const pLeft = parseFloat(jumpAnim.targetEl.style.left);
-        const pTop = parseFloat(jumpAnim.targetEl.style.top);
-        const pWidth = parseFloat(jumpAnim.targetEl.style.width);
-        targetX = pLeft + pWidth / 2 - 45;
-        targetY = pTop - 60;
-      } else {
-        targetX = jumpAnim.targetFloorX;
-        targetY = jumpAnim.targetFloorY;
-      }
-
-      const currentX = jumpAnim.startX + (targetX - jumpAnim.startX) * progress;
-      const heightOffset = 4 * jumpAnim.peakHeight * progress * (1 - progress);
-      const baseY = jumpAnim.startY + (targetY - jumpAnim.startY) * progress;
-      const currentY = baseY - heightOffset;
-
-      posX = currentX;
-      posY = currentY;
-      catRoot.style.left = `${posX}px`;
-      catRoot.style.top = `${posY}px`;
-
-      const direction = targetX - jumpAnim.startX;
-      updateDirectionBySpeed(direction);
-
-      if (progress >= 1.0) {
-        jumpAnim.active = false;
-        if (jumpAnim.targetFish) {
-            eatFish();
-            isGrounded = false;
-            currentPlatform = null;
-            velocityX = 0; velocityY = 0;
-            jumpAnim.targetFish = null;
-        } else {
-            velocityX = 0; velocityY = 0;
-            if (jumpAnim.targetEl) {
-              currentPlatform = jumpAnim.targetEl;
-            } else {
-              currentPlatform = null;
-            }
-            isGrounded = true;
-            triggerBounceAnimation();
-        }
-      }
+      handleJumpAnim(timestamp);
       requestAnimationFrame(updatePhysics);
       return;
     }
 
+    // 3. 猫の通常物理演算
     if (!isDragging || activeDragEl !== catRoot) {
+      updateCatPhysics();
+    }
+
+    requestAnimationFrame(updatePhysics);
+  }
+
+  function updateBallPhysics() {
+    ballObj.vy += gravity;
+    ballObj.vx *= 0.98; // ボールは転がりやすいように摩擦少なめ
+    ballObj.vy *= 0.98;
+
+    ballObj.x += ballObj.vx;
+    ballObj.y += ballObj.vy;
+
+    const roomRect = room.getBoundingClientRect();
+    const maxX = roomRect.width - 30; // ボール幅
+    const maxY = roomRect.height - 30;
+
+    // 床・壁・天井
+    if (ballObj.y > maxY) {
+      ballObj.y = maxY;
+      ballObj.vy *= -0.7; // 弾む
+      if(Math.abs(ballObj.vy) < 1) ballObj.vy = 0;
+    }
+    if (ballObj.x < 0) { ballObj.x = 0; ballObj.vx *= -0.7; }
+    if (ballObj.x > maxX) { ballObj.x = maxX; ballObj.vx *= -0.7; }
+    
+    // 足場との衝突（簡易）
+    platforms.forEach(plat => {
+      const pLeft = parseFloat(plat.style.left);
+      const pTop = parseFloat(plat.style.top);
+      const pWidth = parseFloat(plat.style.width);
+      
+      const ballCX = ballObj.x + 15;
+      const ballCY = ballObj.y + 30;
+
+      if (ballCX >= pLeft && ballCX <= pLeft + pWidth) {
+         if (ballCY >= pTop - 5 && ballCY <= pTop + 15 && ballObj.vy > 0) {
+            ballObj.y = pTop - 30;
+            ballObj.vy *= -0.7;
+         }
+      }
+    });
+
+    ballObj.el.style.left = `${ballObj.x}px`;
+    ballObj.el.style.top = `${ballObj.y}px`;
+  }
+
+  function updateCatPhysics() {
       velocityY += gravity;
       velocityX *= friction;
       velocityY *= friction;
-
       posX += velocityX;
       posY += velocityY;
 
@@ -444,7 +488,6 @@ html_code = """
       const maxY = roomRect.height - 80;
 
       let landedThisFrame = false;
-
       if (velocityY >= 0) {
         platforms.forEach(plat => {
           const pLeft = parseFloat(plat.style.left);
@@ -463,72 +506,161 @@ html_code = """
           }
         });
       }
-
       if (!landedThisFrame && posY > maxY) {
-        posY = maxY;
-        velocityY = 0;
-        velocityX = 0;
-        landedThisFrame = true;
-        currentPlatform = null;
+        posY = maxY; velocityY = 0; velocityX = 0; landedThisFrame = true; currentPlatform = null;
       }
-
       if (currentPlatform) {
          const pLeft = parseFloat(currentPlatform.style.left);
          const pWidth = parseFloat(currentPlatform.style.width);
          const catCenter = posX + 45;
-         if (catCenter < pLeft || catCenter > pLeft + pWidth) {
-            currentPlatform = null;
-            wakeUp(); 
-         }
+         if (catCenter < pLeft || catCenter > pLeft + pWidth) { currentPlatform = null; wakeUp(); }
       }
-
       isGrounded = landedThisFrame;
-
       if (posY < 0) { posY = 0; velocityY *= bounce; }
       if (posX < 0) { posX = 0; velocityX *= bounce; }
       if (posX > maxX) { posX = maxX; velocityX *= bounce; }
 
+      // --- ボールとの衝突判定（キック！） ---
+      if (ballObj) {
+         const catCX = posX + 45;
+         const catCY = posY + 40;
+         const ballCX = ballObj.x + 15;
+         const ballCY = ballObj.y + 15;
+         
+         const dx = ballCX - catCX;
+         const dy = ballCY - catCY;
+         const dist = Math.sqrt(dx*dx + dy*dy);
+         
+         // 接触判定 (半径の和 + マージン)
+         if (dist < 55) {
+             // 衝突！
+             // 猫の速度を加算
+             const kickPower = 0.2;
+             ballObj.vx += dx * kickPower + velocityX * 1.5;
+             ballObj.vy += dy * kickPower + velocityY * 1.5 - 2; // 少し浮かせる
+             
+             // 猫も少し反動
+             velocityX -= dx * 0.05;
+         }
+      }
+
+      // 自動行動
       if (isGrounded && !isDragging && !isNoticing) {
-        handleIdleBehavior();
+        // ★ボールモードならボールを追いかける★
+        if (currentMode === 'ball' && ballObj) {
+             chaseBallAI();
+        } else {
+             handleIdleBehavior();
+        }
       }
 
-      if (!catVisual.classList.contains('sleepy')) {
-          updateDirectionBySpeed(velocityX);
+      if (!catVisual.classList.contains('sleepy')) { updateDirectionBySpeed(velocityX); }
+      catRoot.style.left = `${posX}px`; catRoot.style.top = `${posY}px`;
+  }
+
+  function chaseBallAI() {
+      // ボールの方へ移動
+      const ballCX = ballObj.x + 15;
+      const catCX = posX + 45;
+      const diffX = ballCX - catCX;
+      
+      if (Math.abs(diffX) > 10) {
+          // 走る
+          velocityX += (diffX > 0 ? 0.5 : -0.5);
+          // 速度制限
+          if (velocityX > 4) velocityX = 4;
+          if (velocityX < -4) velocityX = -4;
       }
+      
+      // ボールが高いところにある場合、ジャンプ
+      if (ballObj.y < posY - 50 && Math.random() < 0.05) {
+          velocityY = -8;
+      }
+      
+      // 時々休憩（ランダム停止）
+      if (Math.random() < 0.01) {
+          velocityX = 0;
+      }
+  }
 
-      catRoot.style.left = `${posX}px`;
-      catRoot.style.top = `${posY}px`;
-    }
+  // --- (以下、既存の関数群：省略せずに記述) ---
+  
+  function handleJumpAnim(timestamp) {
+      const elapsed = timestamp - jumpAnim.startTime;
+      const progress = Math.min(elapsed / jumpAnim.duration, 1.0);
+      let targetX, targetY;
+      if (jumpAnim.targetFish) { targetX = jumpAnim.targetFish.x; targetY = jumpAnim.targetFish.y; }
+      else if (jumpAnim.targetEl) {
+        const pLeft = parseFloat(jumpAnim.targetEl.style.left);
+        const pTop = parseFloat(jumpAnim.targetEl.style.top);
+        const pWidth = parseFloat(jumpAnim.targetEl.style.width);
+        targetX = pLeft + pWidth / 2 - 45; targetY = pTop - 60;
+      } else { targetX = jumpAnim.targetFloorX; targetY = jumpAnim.targetFloorY; }
+      
+      const currentX = jumpAnim.startX + (targetX - jumpAnim.startX) * progress;
+      const heightOffset = 4 * jumpAnim.peakHeight * progress * (1 - progress);
+      const baseY = jumpAnim.startY + (targetY - jumpAnim.startY) * progress;
+      const currentY = baseY - heightOffset;
+      posX = currentX; posY = currentY;
+      catRoot.style.left = `${posX}px`; catRoot.style.top = `${posY}px`;
+      const direction = targetX - jumpAnim.startX;
+      updateDirectionBySpeed(direction);
+      
+      if (progress >= 1.0) {
+        jumpAnim.active = false;
+        if (jumpAnim.targetFish) {
+            eatFish(); isGrounded = false; currentPlatform = null; velocityX = 0; velocityY = 0; jumpAnim.targetFish = null;
+        } else {
+            velocityX = 0; velocityY = 0;
+            if (jumpAnim.targetEl) currentPlatform = jumpAnim.targetEl; else currentPlatform = null;
+            isGrounded = true; triggerBounceAnimation();
+        }
+      }
+  }
 
-    requestAnimationFrame(updatePhysics);
+  function startNoticeSequence(fishX, fishY) {
+      isNoticing = true; wakeUp(); velocityX = 0; velocityY = 0;
+      const direction = fishX - (posX + 45);
+      updateDirectionBySpeed(direction);
+      spawnNoticeMark();
+      noticeTimeout = setTimeout(() => {
+          startJumpToFish(fishX, fishY); isNoticing = false;
+          const mark = room.querySelector('.notice-mark'); if(mark) mark.remove();
+      }, 600); 
+  }
+
+  function spawnNoticeMark() {
+      const mark = document.createElement('div');
+      mark.classList.add('notice-mark'); mark.textContent = '!';
+      mark.style.left = (posX + 40) + 'px'; mark.style.top = (posY - 30) + 'px';
+      room.appendChild(mark);
+  }
+
+  function startJumpToFish(targetX, targetY) {
+    if (!currentFish) { isNoticing = false; return; }
+    jumpAnim.active = true; jumpAnim.startTime = performance.now();
+    jumpAnim.startX = posX; jumpAnim.startY = posY; jumpAnim.targetEl = null;
+    jumpAnim.targetFish = { x: targetX - 45, y: targetY - 30 };
+    const destY = jumpAnim.targetFish.y; jumpAnim.peakHeight = 150 + Math.abs(posY - destY) * 0.2;
+    const dist = Math.abs(jumpAnim.targetFish.x - posX); jumpAnim.duration = 500 + dist * 1.2;
+    triggerBounceAnimation();
   }
 
   function eatFish() {
-      if (currentFish) {
-          currentFish.remove();
-          currentFish = null;
-          spawnHeart();
-          triggerBounceAnimation();
-      }
+      if (currentFish) { currentFish.remove(); currentFish = null; spawnHeart(); triggerBounceAnimation(); }
   }
-
   function spawnHeart() {
-      const heart = document.createElement('div');
-      heart.classList.add('heart');
-      heart.textContent = '💕';
-      heart.style.left = (posX + 35) + 'px';
-      heart.style.top = (posY - 20) + 'px';
-      room.appendChild(heart);
-      setTimeout(() => heart.remove(), 1000);
+      const heart = document.createElement('div'); heart.classList.add('heart'); heart.textContent = '💕';
+      heart.style.left = (posX + 35) + 'px'; heart.style.top = (posY - 20) + 'px';
+      room.appendChild(heart); setTimeout(() => heart.remove(), 1000);
   }
 
   function handleIdleBehavior() {
     idleTimer--;
     if (idleTimer < 0) {
       wakeUp();
-      if (currentPlatform) {
-          if (Math.random() < 0.6) { startSleeping(); } else { startPerfectJump(); }
-      } else {
+      if (currentPlatform) { if (Math.random() < 0.6) { startSleeping(); } else { startPerfectJump(); } }
+      else {
           const action = Math.floor(Math.random() * 5); 
           switch(action) {
             case 0: velocityX = -3; if(Math.random()>0.7) velocityY = -3; break;
@@ -537,113 +669,53 @@ html_code = """
             case 3: case 4: startPerfectJump(); break;
           }
       }
-      if (catVisual.classList.contains('sleepy')) {
-          idleTimer = 180 + Math.random() * 180;
-      } else {
-          idleTimer = 60 + Math.random() * 100;
-      }
+      if (catVisual.classList.contains('sleepy')) idleTimer = 180 + Math.random() * 180; else idleTimer = 60 + Math.random() * 100;
     }
   }
 
-  function startSleeping() {
-      catVisual.classList.add('sleepy');
-      catFace.classList.remove('face-left', 'face-right');
-      catRoot.classList.remove('walking-left', 'walking-right');
-      velocityX = 0; velocityY = 0;
-  }
-
-  function wakeUp() {
-      catVisual.classList.remove('sleepy');
-  }
+  function startSleeping() { catVisual.classList.add('sleepy'); catFace.classList.remove('face-left', 'face-right'); catRoot.classList.remove('walking-left', 'walking-right'); velocityX = 0; velocityY = 0; }
+  function wakeUp() { catVisual.classList.remove('sleepy'); }
 
   function startPerfectJump() {
-    const roomRect = room.getBoundingClientRect();
-    const maxX = roomRect.width - 90;
+    const roomRect = room.getBoundingClientRect(); const maxX = roomRect.width - 90;
     let targetEl = null; let tFloorX = 0; let tFloorY = roomRect.height - 80;
     if (currentPlatform) {
        let otherPlats = []; platforms.forEach(p => { if(p !== currentPlatform) otherPlats.push(p); });
-       if (otherPlats.length > 0 && Math.random() > 0.6) { targetEl = otherPlats[Math.floor(Math.random() * otherPlats.length)];
-       } else { targetEl = null; tFloorX = Math.random() * maxX; }
-    } else { targetEl = platforms[Math.floor(Math.random() * platforms.length)]; }
+       if (otherPlats.length > 0 && Math.random() > 0.6) targetEl = otherPlats[Math.floor(Math.random() * otherPlats.length)];
+       else { targetEl = null; tFloorX = Math.random() * maxX; }
+    } else targetEl = platforms[Math.floor(Math.random() * platforms.length)];
     jumpAnim.active = true; jumpAnim.startTime = performance.now(); jumpAnim.startX = posX; jumpAnim.startY = posY;
     jumpAnim.targetEl = targetEl; jumpAnim.targetFish = null; jumpAnim.targetFloorX = tFloorX; jumpAnim.targetFloorY = tFloorY;
-    let destY; if (targetEl) { destY = parseFloat(targetEl.style.top) - 60; } else { destY = tFloorY; }
+    let destY; if (targetEl) destY = parseFloat(targetEl.style.top) - 60; else destY = tFloorY;
     const highestPoint = Math.min(posY, destY); jumpAnim.peakHeight = 120 + Math.abs(posY - destY) * 0.2;
-    let dist = 0; if(targetEl) { const pLeft = parseFloat(targetEl.style.left); dist = Math.abs((pLeft + parseFloat(targetEl.style.width)/2) - posX);
-    } else { dist = Math.abs(tFloorX - posX); }
+    let dist = 0; if(targetEl) { const pLeft = parseFloat(targetEl.style.left); dist = Math.abs((pLeft + parseFloat(targetEl.style.width)/2) - posX); } else dist = Math.abs(tFloorX - posX);
     jumpAnim.duration = 600 + dist * 1.5; triggerBounceAnimation();
   }
 
   function updateDirectionBySpeed(val) {
-    catFace.classList.remove('face-left', 'face-right');
-    catRoot.classList.remove('walking-left', 'walking-right');
-    if (Math.abs(val) > 0.1) {
-      if (val > 0) { catFace.classList.add('face-right'); catRoot.classList.add('walking-right');
-      } else { catFace.classList.add('face-left'); catRoot.classList.add('walking-left'); }
-    }
+    catFace.classList.remove('face-left', 'face-right'); catRoot.classList.remove('walking-left', 'walking-right');
+    if (Math.abs(val) > 0.1) { if (val > 0) { catFace.classList.add('face-right'); catRoot.classList.add('walking-right'); } else { catFace.classList.add('face-left'); catRoot.classList.add('walking-left'); } }
   }
-
-  function triggerBounceAnimation() {
-    catVisual.classList.remove('boing-effect');
-    void catVisual.offsetWidth;
-    catVisual.classList.add('boing-effect');
-  }
+  function triggerBounceAnimation() { catVisual.classList.remove('boing-effect'); void catVisual.offsetWidth; catVisual.classList.add('boing-effect'); }
 
   function startDrag(e) {
-    hasDragged = false;
-    const target = e.target.closest('.draggable');
-    if (!target) return;
-    
-    if (isNoticing) {
-        clearTimeout(noticeTimeout);
-        isNoticing = false;
-        const mark = room.querySelector('.notice-mark');
-        if(mark) mark.remove();
-    }
-
-    isDragging = true;
-    activeDragEl = target;
-    activeDragEl.classList.add('grabbing');
-    
-    if (activeDragEl === catRoot) {
-      wakeUp();
-      jumpAnim.active = false;
-      catVisual.classList.remove('boing-effect'); 
-      velocityX = 0; velocityY = 0;
-      currentPlatform = null;
-    }
-
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    const elemRect = activeDragEl.getBoundingClientRect();
-    dragOffsetLeft = clientX - elemRect.left;
-    dragOffsetTop = clientY - elemRect.top;
+    hasDragged = false; const target = e.target.closest('.draggable'); if (!target) return;
+    if (isNoticing) { clearTimeout(noticeTimeout); isNoticing = false; const mark = room.querySelector('.notice-mark'); if(mark) mark.remove(); }
+    isDragging = true; activeDragEl = target; activeDragEl.classList.add('grabbing');
+    if (activeDragEl === catRoot) { wakeUp(); jumpAnim.active = false; catVisual.classList.remove('boing-effect'); velocityX = 0; velocityY = 0; currentPlatform = null; }
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX; const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const elemRect = activeDragEl.getBoundingClientRect(); dragOffsetLeft = clientX - elemRect.left; dragOffsetTop = clientY - elemRect.top;
   }
-
   function drag(e) {
-    if (!isDragging || !activeDragEl) return;
-    hasDragged = true;
-    e.preventDefault();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    const roomRect = room.getBoundingClientRect();
-    let newLeft = clientX - roomRect.left - dragOffsetLeft;
-    let newTop = clientY - roomRect.top - dragOffsetTop;
-    if (activeDragEl === catRoot) { posX = newLeft; posY = newTop; }
-    activeDragEl.style.left = `${newLeft}px`; activeDragEl.style.top = `${newTop}px`;
+    if (!isDragging || !activeDragEl) return; hasDragged = true; e.preventDefault();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX; const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const roomRect = room.getBoundingClientRect(); let newLeft = clientX - roomRect.left - dragOffsetLeft; let newTop = clientY - roomRect.top - dragOffsetTop;
+    if (activeDragEl === catRoot) { posX = newLeft; posY = newTop; } activeDragEl.style.left = `${newLeft}px`; activeDragEl.style.top = `${newTop}px`;
   }
+  function endDrag() { if (activeDragEl) activeDragEl.classList.remove('grabbing'); isDragging = false; activeDragEl = null; idleTimer = 60; }
 
-  function endDrag() {
-    if (activeDragEl) activeDragEl.classList.remove('grabbing');
-    isDragging = false; activeDragEl = null; idleTimer = 60; 
-  }
-
-  room.addEventListener('mousedown', startDrag);
-  window.addEventListener('mousemove', drag);
-  window.addEventListener('mouseup', endDrag);
-  room.addEventListener('touchstart', startDrag, {passive: false});
-  window.addEventListener('touchmove', drag, {passive: false});
-  window.addEventListener('touchend', endDrag);
+  room.addEventListener('mousedown', startDrag); window.addEventListener('mousemove', drag); window.addEventListener('mouseup', endDrag);
+  room.addEventListener('touchstart', startDrag, {passive: false}); window.addEventListener('touchmove', drag, {passive: false}); window.addEventListener('touchend', endDrag);
 
   startPhysicsLoop();
 </script>
