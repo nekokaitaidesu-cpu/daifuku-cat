@@ -8,8 +8,8 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("Daifuku Athletic Room v13 🍄")
-st.write("猫じゃらしで遊べるようになったっち！フリフリしてね！🪶")
+st.title("Daifuku Athletic Room v14 🍄")
+st.write("猫じゃらしの動きがリアルになったっち！高いところも狙うよ！🪶")
 
 # HTML/CSS/JSを定義
 html_code = """
@@ -44,12 +44,11 @@ html_code = """
     border-radius: 12px;
     box-shadow: 0 10px 25px rgba(0,0,0,0.1);
     overflow: hidden;
-    cursor: pointer; /* デフォルトカーソル */
+    cursor: pointer;
   }
   
-  /* 棒モードの時はカーソルを消す（棒を表示するため） */
   .room-container.wand-mode {
-    cursor: none;
+    cursor: none; /* 棒モード中はカーソルを消す */
   }
 
   /* --- ツールバー --- */
@@ -271,59 +270,41 @@ html_code = """
     position: absolute;
     top: 0;
     left: 0;
-    pointer-events: none; /* クリックを透過 */
+    pointer-events: none;
     z-index: 50;
-    display: none; /* デフォルト非表示 */
+    display: none;
   }
   
   .wand-stick {
     position: absolute;
-    bottom: 0;
-    right: 0;
+    top: 0; /* カーソル位置が起点 */
+    left: 0;
     width: 4px;
-    height: 100px;
-    background-color: #8b5a2b; /* 木の棒 */
+    height: 50px; /* 長さを半分に */
+    background-color: #8b5a2b;
     border-radius: 2px;
-    transform-origin: bottom right;
-    transform: rotate(-30deg);
+    transform-origin: top center; /* 上を中心に回転 */
+    /* 初期角度はJSで制御 */
   }
   
-  .wand-string {
-    position: absolute;
-    top: -20px; /* 棒の先 */
-    left: -40px;
-    width: 50px;
-    height: 2px;
-    background-color: #ddd;
-    transform-origin: right center;
-    transform: rotate(20deg);
-  }
-
   .wand-feather {
     position: absolute;
-    top: -20px; /* 棒の先（原点） */
-    left: -20px;
+    top: 45px; /* 棒の先端付近 */
+    left: -18px;
     width: 40px;
     height: 40px;
-    /* 羽根っぽい見た目 */
     background: radial-gradient(circle at 30% 30%, #fff, #f0f0f0);
     border-radius: 50% 0 50% 50%;
     box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    transform-origin: center top;
-    /* ふりふりアニメーションはJSで制御 */
+    transform-origin: center top; /* 羽の付け根で揺れる */
   }
   
-  /* 羽の装飾 */
   .wand-feather::after {
     content: "";
     position: absolute;
-    top: 5px;
-    left: 5px;
-    width: 20px;
-    height: 20px;
+    top: 5px; left: 5px; width: 20px; height: 20px;
     background-color: rgba(255,200,200,0.5);
-    border-radius: 50%;
-    filter: blur(2px);
+    border-radius: 50%; filter: blur(2px);
   }
 
 </style>
@@ -356,7 +337,7 @@ html_code = """
     </div>
 
     <div id="wand">
-        <div class="wand-stick"></div>
+        <div class="wand-stick" id="wand-stick"></div>
         <div class="wand-feather" id="wand-feather"></div>
     </div>
 
@@ -372,6 +353,7 @@ html_code = """
   const btnBall = document.getElementById('btn-ball');
   const btnWand = document.getElementById('btn-wand');
   const wandEl = document.getElementById('wand');
+  const wandStick = document.getElementById('wand-stick');
   const wandFeather = document.getElementById('wand-feather');
   
   let currentMode = 'fish';
@@ -401,10 +383,11 @@ html_code = """
   let holdStartTime = 0;
 
   // 猫じゃらし用変数
-  let wandX = 0, wandY = 0;
   let wandTargetX = 0, wandTargetY = 0;
-  let wandVX = 0; // 棒の速度（フリフリ検知用）
-  let happyCounter = 0; // 頭の上で振ってる時間計測
+  let lastWandTargetX = 0; // 前回の位置（速度計算用）
+  let wandVX = 0; 
+  let happyCounter = 0;
+  let wandAngle = 0; // 棒の角度
 
   let jumpAnim = {
     active: false, startTime: 0, duration: 0, startX: 0, startY: 0,
@@ -425,10 +408,11 @@ html_code = """
         btnWand.classList.add('active');
         room.classList.add('wand-mode');
         wandEl.style.display = 'block';
+        // 初期位置リセット
+        lastWandTargetX = wandTargetX;
     }
   }
 
-  // --- マウス移動イベント（猫じゃらし用） ---
   room.addEventListener('mousemove', (e) => {
       const roomRect = room.getBoundingClientRect();
       wandTargetX = e.clientX - roomRect.left;
@@ -440,12 +424,9 @@ html_code = """
       wandTargetY = e.touches[0].clientY - roomRect.top;
   }, {passive: true});
 
-  // --- クリックイベント ---
   room.addEventListener('click', (e) => {
     if (hasDragged) return;
     if (e.target.closest('.draggable') || e.target.closest('.tool-btn')) return;
-
-    // 猫じゃらしモード中はクリックで魚などは出さない
     if (currentMode === 'wand') return;
 
     const roomRect = room.getBoundingClientRect();
@@ -484,15 +465,14 @@ html_code = """
   }
 
   function updatePhysics(timestamp) {
-    // 0. 猫じゃらし処理
     if (currentMode === 'wand') {
         updateWandPhysics();
     } else {
-        // まったり顔リセット
         if (catVisual.classList.contains('sleepy')) {
-            // 寝るアクション中でなければリセット（ただし寝るアクション中はそのまま）
-            // AI制御で寝てる場合もあるので、ここでは強制解除しないほうがいいかもだが
-            // 棒から切り替えた瞬間に戻したいので、sleepyクラス管理が必要
+            // AI制御の睡眠は維持
+        } else {
+            // 棒モードのまったり顔は解除
+            catVisual.classList.remove('sleepy');
         }
     }
 
@@ -519,81 +499,71 @@ html_code = """
 
   // ★猫じゃらしの物理とAI★
   function updateWandPhysics() {
-      // 棒の位置を少し遅れて追従させる（ふわふわ感）
-      const dx = wandTargetX - wandX;
-      const dy = wandTargetY - wandY;
-      
-      wandX += dx * 0.2;
-      wandY += dy * 0.2;
-      
-      wandVX = dx; // 横方向の動きの勢い
+      // 1. 棒の位置をカーソルに追従（持ち手）
+      wandEl.style.left = `${wandTargetX}px`;
+      wandEl.style.top = `${wandTargetY}px`;
 
-      wandEl.style.left = `${wandX}px`;
-      wandEl.style.top = `${wandY}px`;
+      // 2. 速度計算と角度更新
+      wandVX = wandTargetX - lastWandTargetX;
+      lastWandTargetX = wandTargetX;
 
-      // 羽のフリフリ（速度に応じて回転）
-      // 速度制限
-      let rotateDeg = wandVX * 2;
-      if (rotateDeg > 60) rotateDeg = 60;
-      if (rotateDeg < -60) rotateDeg = -60;
-      wandFeather.style.transform = `rotate(${rotateDeg}deg)`;
+      // 速度に応じて棒と羽を傾ける（慣性表現）
+      let targetAngle = -wandVX * 3; // 逆方向に傾く
+      // 角度制限
+      if (targetAngle > 45) targetAngle = 45;
+      if (targetAngle < -45) targetAngle = -45;
+      
+      // 滑らかに角度を変える
+      wandAngle += (targetAngle - wandAngle) * 0.2;
+
+      wandStick.style.transform = `rotate(${wandAngle}deg)`;
+      // 羽は棒の角度にさらに少し遅れて揺れるイメージ
+      wandFeather.style.transform = `rotate(${wandAngle * 1.5}deg)`;
 
       // --- 大福ちゃんの反応 ---
-      // 1. 位置関係の計算
       const catCX = posX + 45;
       const catCY = posY + 40;
-      const featherX = wandX - 10; // 羽の先端付近
-      const featherY = wandY;
+      // 羽の位置（簡易計算：棒の先端付近）
+      const featherX = wandTargetX + Math.sin(wandAngle * Math.PI/180) * 50;
+      const featherY = wandTargetY + Math.cos(wandAngle * Math.PI/180) * 50;
       
       const distX = featherX - catCX;
       const distY = featherY - catCY;
-      const dist = Math.sqrt(distX*distX + distY*distY);
+      // const dist = Math.sqrt(distX*distX + distY*distY); // 使ってないのでコメントアウト
 
-      // 2. 「まったり顔」判定（顔の前にある時）
-      // Y座標が近く、X座標も近い
-      if (Math.abs(distX) < 40 && Math.abs(distY) < 30) {
-          if (!catVisual.classList.contains('sleepy')) {
-              catVisual.classList.add('sleepy'); // まったり
-          }
-          // 動きを止める
-          velocityX *= 0.8;
-          return; // 追従しない
+      // まったり顔判定
+      if (Math.abs(distX) < 40 && Math.abs(distY) < 30 && distY > -10) {
+          if (!catVisual.classList.contains('sleepy')) catVisual.classList.add('sleepy');
+          velocityX *= 0.8; return;
       } else {
-          // AIで寝てる時以外は顔を戻す
-          // ここは簡易的に、棒モード中はAI睡眠しない前提で解除
           catVisual.classList.remove('sleepy');
       }
 
-      // 3. 「激喜び（ハート）」判定（頭の上にある時）
-      // Xが近く、Yが猫より上（マイナス方向）
+      // 激喜び判定
       if (Math.abs(distX) < 40 && distY < -20 && distY > -100) {
           happyCounter++;
-          if (happyCounter > 60) { // 1秒くらい維持したら
-              if (Math.random() < 0.1) spawnHeart(); // ハートを出す
-          }
-          // 上を見る
-          // velocityX *= 0.9; // 少し止まる
+          if (happyCounter > 60 && Math.random() < 0.1) spawnHeart();
       } else {
           happyCounter = 0;
       }
 
-      // 4. 追従アクション（基本）
-      // 距離があるなら近づく
+      // 追従アクション
       if (Math.abs(distX) > 15) {
           updateDirectionBySpeed(distX);
           velocityX += (distX > 0 ? 0.8 : -0.8);
-          // 速度制限
-          if (velocityX > 5) velocityX = 5;
-          if (velocityX < -5) velocityX = -5;
+          if (velocityX > 5) velocityX = 5; if (velocityX < -5) velocityX = -5;
       } else {
           velocityX *= 0.8;
       }
 
-      // ジャンプ判定（羽が高い位置にある）
-      if (distY < -60 && isGrounded && Math.random() < 0.05) {
-          // 届きそうな高さならジャンプ
-          if (distY > -200) {
-              velocityY = -8 - Math.random() * 4;
+      // ★ジャンプ判定（強化）★
+      // 羽が高い位置にある場合
+      if (distY < -60 && isGrounded) {
+          // 真下付近にいるなら、ランダムでジャンプ！
+          if (Math.abs(distX) < 30 && Math.random() < 0.05) {
+              // 足場にいるときは高く飛ぶ
+              const jumpPower = currentPlatform ? -12 : -9;
+              velocityY = jumpPower - Math.random() * 3;
               triggerBounceAnimation();
           }
       }
@@ -649,9 +619,7 @@ html_code = """
       // 自動行動
       if (isGrounded && !isDragging && !isNoticing && !isHoldingBall) {
         if (currentMode === 'ball' && ballObj) { chaseBallAI(); }
-        else if (currentMode === 'wand') {
-            // 棒モードの時は updateWandPhysics で制御しているのでここでは何もしない（あるいは補完）
-        }
+        else if (currentMode === 'wand') { /* 棒モードは専用AI */ }
         else { handleIdleBehavior(); }
       }
 
