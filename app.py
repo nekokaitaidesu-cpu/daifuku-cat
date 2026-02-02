@@ -8,8 +8,8 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("Daifuku Athletic Room v7 🍄")
-st.write("お魚を見つけると「！」と反応するようになったっち！")
+st.title("Daifuku Athletic Room v8 🍄")
+st.write("お魚は「1個ずつ」味わって食べるようになったっち！🐟")
 
 # HTML/CSS/JSを定義
 html_code = """
@@ -18,6 +18,11 @@ html_code = """
 <head>
 <meta charset="UTF-8">
 <style>
+  /* 全体のタップハイライトを無効化（青くなるのを防ぐ） */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
   body {
     height: 100vh;
     margin: 0;
@@ -193,7 +198,6 @@ html_code = """
     50% { transform: translateY(-5px); }
   }
 
-  /* --- ハート --- */
   .heart {
     position: absolute;
     font-size: 20px;
@@ -207,11 +211,10 @@ html_code = """
     100% { transform: translateY(-30px) scale(1.5); opacity: 0; }
   }
 
-  /* ★追加：気づいた時の「！」マーク★ */
   .notice-mark {
     position: absolute;
     font-size: 24px;
-    color: #ff4500; /* オレンジっぽい赤 */
+    color: #ff4500;
     font-weight: bold;
     pointer-events: none;
     animation: pop-notice 0.6s forwards ease-out;
@@ -272,7 +275,6 @@ html_code = """
   
   let currentFish = null;
   
-  // ★追加：気づきモーション中のフラグとタイマー
   let isNoticing = false;
   let noticeTimeout = null;
 
@@ -289,14 +291,18 @@ html_code = """
     peakHeight: 0
   };
 
+  // --- お魚クリックイベント ---
   room.addEventListener('click', (e) => {
+    // ドラッグや要素クリックは無視
     if (hasDragged) return;
     if (e.target.closest('.draggable')) return;
     
-    // 気づきモーション中はお魚を出さない（連打防止）
-    if (isNoticing) return;
-
-    if (currentFish) currentFish.remove();
+    // ★ここが修正ポイント！★
+    // 既にお魚がある、または気づき中、またはお魚ジャンプ中なら、
+    // 次のお魚を置かせない（returnで処理を終わらせる）
+    if (currentFish || isNoticing || (jumpAnim.active && jumpAnim.targetFish)) {
+        return;
+    }
 
     const roomRect = room.getBoundingClientRect();
     const clickX = e.clientX - roomRect.left;
@@ -314,45 +320,37 @@ html_code = """
     room.appendChild(fish);
     currentFish = fish;
 
-    // いきなりジャンプせず、「気づく」シーケンスを開始
     startNoticeSequence(x, y);
   }
 
-  // ★新関数：「気づく」シーケンス
   function startNoticeSequence(fishX, fishY) {
       isNoticing = true;
-      wakeUp(); // まず起きる
-      velocityX = 0; velocityY = 0; // 止まる
+      wakeUp();
+      velocityX = 0; velocityY = 0;
 
-      // お魚の方を向く
       const direction = fishX - (posX + 45);
       updateDirectionBySpeed(direction);
 
-      // 「！」マークを出す
       spawnNoticeMark();
 
-      // 少し待ってからジャンプ
       noticeTimeout = setTimeout(() => {
           startJumpToFish(fishX, fishY);
-          isNoticing = false; // 気づき終了
-          // マークを消す
+          isNoticing = false; 
           const mark = room.querySelector('.notice-mark');
           if(mark) mark.remove();
-      }, 600); // 600ms待つ
+      }, 600); 
   }
 
   function spawnNoticeMark() {
       const mark = document.createElement('div');
       mark.classList.add('notice-mark');
       mark.textContent = '!';
-      // 猫の頭の上に出す
       mark.style.left = (posX + 40) + 'px';
       mark.style.top = (posY - 30) + 'px';
       room.appendChild(mark);
   }
 
   function startJumpToFish(targetX, targetY) {
-    // お魚がまだあるか確認（待ってる間に消えた場合など）
     if (!currentFish) {
         isNoticing = false;
         return;
@@ -379,10 +377,10 @@ html_code = """
 
   function updatePhysics(timestamp) {
     if (jumpAnim.active) {
-      // (省略: 前と同じジャンプ処理)
       const elapsed = timestamp - jumpAnim.startTime;
       const progress = Math.min(elapsed / jumpAnim.duration, 1.0);
       let targetX, targetY;
+      
       if (jumpAnim.targetFish) {
         targetX = jumpAnim.targetFish.x;
         targetY = jumpAnim.targetFish.y;
@@ -396,16 +394,20 @@ html_code = """
         targetX = jumpAnim.targetFloorX;
         targetY = jumpAnim.targetFloorY;
       }
+
       const currentX = jumpAnim.startX + (targetX - jumpAnim.startX) * progress;
       const heightOffset = 4 * jumpAnim.peakHeight * progress * (1 - progress);
       const baseY = jumpAnim.startY + (targetY - jumpAnim.startY) * progress;
       const currentY = baseY - heightOffset;
+
       posX = currentX;
       posY = currentY;
       catRoot.style.left = `${posX}px`;
       catRoot.style.top = `${posY}px`;
+
       const direction = targetX - jumpAnim.startX;
       updateDirectionBySpeed(direction);
+
       if (progress >= 1.0) {
         jumpAnim.active = false;
         if (jumpAnim.targetFish) {
@@ -486,7 +488,6 @@ html_code = """
       if (posX < 0) { posX = 0; velocityX *= bounce; }
       if (posX > maxX) { posX = maxX; velocityX *= bounce; }
 
-      // 自動行動（気づきモーション中は実行しない）
       if (isGrounded && !isDragging && !isNoticing) {
         handleIdleBehavior();
       }
@@ -522,7 +523,6 @@ html_code = """
   }
 
   function handleIdleBehavior() {
-    // (省略: 前と同じ自動行動)
     idleTimer--;
     if (idleTimer < 0) {
       wakeUp();
@@ -557,7 +557,6 @@ html_code = """
   }
 
   function startPerfectJump() {
-    // (省略: 前と同じジャンプ)
     const roomRect = room.getBoundingClientRect();
     const maxX = roomRect.width - 90;
     let targetEl = null; let tFloorX = 0; let tFloorY = roomRect.height - 80;
@@ -595,7 +594,6 @@ html_code = """
     const target = e.target.closest('.draggable');
     if (!target) return;
     
-    // ★ドラッグされたら気づきモーションもキャンセル
     if (isNoticing) {
         clearTimeout(noticeTimeout);
         isNoticing = false;
